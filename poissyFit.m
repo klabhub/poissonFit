@@ -57,6 +57,8 @@ classdef poissyFit< matlab.mixin.Copyable
         tuningCurve             % Non-parametric estimate of the tuning curve
         tuningCurveErr          % IQR for tuning curve
         bestGuess               % Initial guess of the parameters (from nonparametric tuning)
+        blank                   % Response to blank (coded as NaN in the stimulus)
+        blankErr                % 
 
         parms                   % Estimated parameters that capture the fluorescence best
         parmsError              % Errors on the parameter estimates.
@@ -98,7 +100,7 @@ classdef poissyFit< matlab.mixin.Copyable
     %% Public functions
     methods (Access=public)
 
-        function o = poissyFit(stim,fluor,dt,fun)
+        function o = poissyFit(stim,fluor,dt,fun,pv)
             % Construct an object, based on the stimulus,fluorescence and
             % timebins of the data.
             arguments
@@ -106,6 +108,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 fluor (:,:) double  % The response in each bin (rows) and each trial (rows)
                 dt (1,1) double     % The duration of a single bin (in seconds).
                 fun = []            % Tuning function for parametric fits.
+                pv.hasDerivatives = [];
             end
             o.stimulus = stim;
             o.fluorescence = fluor;
@@ -116,6 +119,8 @@ classdef poissyFit< matlab.mixin.Copyable
             % .hasDeriviatives manually.
             if isempty(fun)
                 o.hasDerivatives  = 2;
+            elseif ~isempty(pv.hasDerivatives) 
+                o.hasDerivatives = pv.hasDerivatives;
             elseif nargout(fun) <0
                 warning('Please set o.hasDerivatives manually for this anonymous tuning function')
             else
@@ -290,13 +295,19 @@ classdef poissyFit< matlab.mixin.Copyable
             % Construct the design matrix
             o.DM = designMatrix(o);
 
-            % Determine a tuning curve (median rate per unique stimulus
+            % Determine a fluorescence tuning curve (median rate per unique stimulus
             % value)
-            [o.uStimulus,~,o.stimulusIx] = unique(o.stimulus);
-            mResponse = mean(o.fluorescence,1,"omitnan"); % Average over time bins
-            o.tuningCurve = accumarray(o.stimulusIx,mResponse',[],@median);
-            o.tuningCurveErr = accumarray(o.stimulusIx,mResponse',[],@(x) (diff(prctile(x,[25 75]),1)));
-
+             mResponse = mean(o.fluorescence,1,"omitnan"); % Average over time bins
+           
+            isBlank  = isnan(o.stimulus);
+            o.blank = median(mResponse(isBlank));
+            o.blankErr = diff(prctile(mResponse(isBlank),[25 75]),1);
+            
+            [o.uStimulus,~,o.stimulusIx] = unique(o.stimulus(~isBlank));
+           
+            o.tuningCurve = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@median);
+            o.tuningCurveErr = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@(x) (diff(prctile(x,[25 75]),1)));
+            
             if isempty(o.tuningFunction)
                 % Because the LL is convex for direct estimation, the
                 % starting guess does not matter.
