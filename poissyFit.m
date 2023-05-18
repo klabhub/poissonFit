@@ -10,11 +10,11 @@ classdef poissyFit< matlab.mixin.Copyable
     % https://github.com/eladganmor/Imaging_Analysis
     % and added some code checking, bootstrapping, code comments.
     %
-    % See README.md , demoParammetric, demoSimple
+    % See README.md , demos/parammetric, demos/simple
     % 
     % BK - May 2023.
 
-    properties (SetAccess=public)
+    properties (SetAccess=public,GetAccess=public)
         % Meta parameters
         maxRate         = 100 %  The maximum number of spikes (per second) that a neuron can reasonable fire under the conditions of the experiment
 
@@ -32,6 +32,11 @@ classdef poissyFit< matlab.mixin.Copyable
             'diagnostics','off', ...
             'FiniteDifferenceType','central'); % Central is slower but more accurate
 
+        hasDerivatives         % Integer indicating whether the tuning function has derivatives (1) and or second derivatives (2)    
+                                % This is normally set automatically, but
+                                % if you use an anonymous function, you may
+                                % have to overrule the automated setting
+                                % (See demos/parametric)
     end
 
     properties (SetAccess=protected)
@@ -42,7 +47,6 @@ classdef poissyFit< matlab.mixin.Copyable
         nrSpikesFactorial       % nrSpikes!
         nrSpikesPerTimepoint    % [nrSpikesMax nrObservations] - Matrix with nrSpikes in each column
         DM                      % [nrPredictors nrObservations] - Design matrix
-        hasDerivatives         % Integerindicating whether the tuning function has derivatives (1) and or second derivatives (2)
         % The raw data
         fluorescence            % [nrTimePoints nrTrials]
         stimulus                % [1 nrTrials]
@@ -108,6 +112,16 @@ classdef poissyFit< matlab.mixin.Copyable
             o.fluorescence = fluor;
             o.binWidth = dt;
             o.tuningFunction = fun;
+            % Check whether the fun has deriviatives. This fails if the fun
+            % is an anonymous function - the user then has to set
+            % .hasDeriviatives manually.
+            if isempty(fun) 
+                o.hasDerivatives  = 2;
+            elseif nargout(fun) <0
+                warning('Please set o.hasDerivatives manually for this anonymous tuning function')
+            else
+                o.hasDerivatives  = nargout(fun)-1;
+            end
             o.initialize
         end
         
@@ -224,9 +238,11 @@ classdef poissyFit< matlab.mixin.Copyable
             % Perform bootstrap resampling to get a robust estimate of the
             % parms and their errors
             if boot>1
+                h = waitbar(0,'Bootstrapping');
                 bootParms       = nan(boot,numel(o.parms));
                 bootParmsError  = nan(boot,numel(o.parms));
                 for i=2:boot
+                    h = waitbar(i/boot,h,'Bootstrapping');
                     thisTrials = randi(o.nrTrials,[1 o.nrTrials]);
                     thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);                    
                     solve(thisO,1,guess);
@@ -234,6 +250,7 @@ classdef poissyFit< matlab.mixin.Copyable
                     bootParmsError(i,:) = thisO.parmsError;
 
                 end
+                close(h)
                 % Store the mean and std across sets as the outcome
                 o.parms      = mean(bootParms,1,'omitnan');
                 o.parmsError = std(bootParms,0,1,'omitnan');
@@ -292,13 +309,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 o.bestGuess = [0 o.uStimulus(prefIx) -10 -10 -10];
             else
                 o.bestGuess = zeros(1,size(o.DM,1));                
-            end
-
-             if isempty(o.tuningFunction) 
-                o.hasDerivatives  = 2;
-            else
-                o.hasDerivatives  = abs(nargout(o.tuningFunction))-1;
-            end
+            end           
         end
 
 

@@ -17,7 +17,7 @@ fPerSpike        = 50;      % Fluorescence per spike
 measurementNoise = 0.1;  % Stdev of the noise
 tuningParms      = [0 90 0]; % Offset Preferred log(Kappa)
 % Use the built-in von Mises function, periodic over 180 (i.e. orientation not direction).
-tc               = @(x,parms)  poissonFit.logVonMises(x,parms,180);
+tc               = @(x,parms)  poissyFit.logVonMises(x,parms,180);
 
 % Generate data
 ori         = repmat(oriPerTrial,[1 nrRepeats]);
@@ -31,12 +31,13 @@ fluorescence = conv([pad;nrSpikes(:)],decayFun','valid'); % Generate the ca sign
 fluorescence  =reshape(fluorescence,[nrTimePoints nrTrials]);
 fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % Add noise
 
-%% Now use the poissonFit object to estimate the tuning curve parameters.
+%% Now use the poissyFit object to estimate the tuning curve parameters.
 % Setup the object by passing the orientation shown in each trial, the
 % corresponding fluorescence, the time bin and the tuning function we wish
 % to estimate.
 % 
-o = poissonFit(ori(1,:),fluorescence,dt,tc);
+o = poissyFit(ori(1,:),fluorescence,dt,tc);
+o.hasDerivatives = 2;
 % Make sure the object's assumptions match those of the experiment
 o.tau =tau;
 o.fPerSpike = fPerSpike;
@@ -64,7 +65,7 @@ plot(ori,lambda,'g')
 % sets (o.parms) and the error is the standard deviation over bootstrap
 % stes (o.parmsError). Compainr o.parmsError to the o,parms will reveal
 % whether the fit is reliable.
-nrBoostrapSets = 1000;
+nrBoostrapSets = 100;
 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
     'MaxIter',1e8, ...
     'SpecifyObjectiveGradient',true, ...    

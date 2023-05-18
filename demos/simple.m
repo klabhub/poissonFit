@@ -17,7 +17,7 @@ fPerSpike        = 50;      % Fluorescence per spike
 measurementNoise = 0.1;  % Stdev of the noise
 tuningParms      = [0 90 0]; % Offset Preferred log(Kappa)
 % Use the built-in von Mises function, to gerneate a direction specific response peaking at 90
-tc               = @(x,parms)  poissonFit.logVonMises(x,parms,360);
+tc               = @(x,parms)  poissyFit.logVonMises(x,parms,360);
 
 % Generate data
 ori         = repmat(oriPerTrial,[1 nrRepeats]);
@@ -39,7 +39,7 @@ fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % 
 % unique stimulus value (here a direction) plus a constant for a total of
 % 13 parameters. 
 
-o = poissonFit(ori(1,:),fluorescence,dt); 
+o = poissyFit(ori(1,:),fluorescence,dt); 
 % Make sure the object's assumptions match those of the experiment
 o.tau =tau;
 o.fPerSpike = fPerSpike;
