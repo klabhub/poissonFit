@@ -1,19 +1,19 @@
 classdef poissyFit< matlab.mixin.Copyable
     % A class to estimate Poisson rates (lambda) from measured Fluorescence.
     %
-    % The theory behind this code is descrived here:
+    % The theory behind this code is described here:
     % Ganmor, E., Krumin, M., Rossi, L. F., Carandini, M. & Simoncelli, E. P.
     % Direct Estimation of Firing Rates from Calcium Imaging Data. 1–34 (2016).
     % http://arxiv.org/abs/1601.00364
     %
     % My implementation started from the code provided here:
     % https://github.com/eladganmor/Imaging_Analysis
-    % and added some code checking, bootstrapping, code comments.
+    % and added some code checking, bootstrapping, code comments, and
+    % additinional functionality to fit double von Mises. 
     %
-    % See README.md , demos/parammetric, demos/simple
-    % 
+    % See README.md , demos/parammetric, demos/simple, demos/twoVonMises
+    %
     % BK - May 2023.
-
     properties (SetAccess=public,GetAccess=public)
         % Meta parameters
         maxRate         = 100 %  The maximum number of spikes (per second) that a neuron can reasonable fire under the conditions of the experiment
@@ -22,6 +22,7 @@ classdef poissyFit< matlab.mixin.Copyable
         stimHistory     = 0.1 % in seconds. was stimHistoryLength
         tau             = 1.2 % Fluorescence decay time constant [s]
         fPerSpike      = 80  % Fluorescence per spike. This is a true free parameter
+
         tuningFunction  = []  % Tuning function for direct parametric estimation.
         % Optimization parameters.
         options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
@@ -32,11 +33,9 @@ classdef poissyFit< matlab.mixin.Copyable
             'diagnostics','off', ...
             'FiniteDifferenceType','central'); % Central is slower but more accurate
 
-        hasDerivatives         % Integer indicating whether the tuning function has derivatives (1) and or second derivatives (2)    
-                                % This is normally set automatically, but
-                                % if you use an anonymous function, you may
-                                % have to overrule the automated setting
-                                % (See demos/parametric)
+        hasDerivatives         % Integer indicating whether the tuning function has derivatives (1) and or second derivatives (2)
+        % This is normally set automatically, but if you use an anonymous function, you may
+        % have to overrule the automated setting (See demos/parametric)
     end
 
     properties (SetAccess=protected)
@@ -52,7 +51,7 @@ classdef poissyFit< matlab.mixin.Copyable
         stimulus                % [1 nrTrials]
         binWidth                % Time bins for the fluorescence signal in seconds.
         measurementNoise        % Estimated as the mean of the standard deviation of the Fluorescence in a trial
-       
+
         uStimulus               % Unique stimulus values
         stimulusIx              % Index into uStimulus for each trial
         tuningCurve             % Non-parametric estimate of the tuning curve
@@ -62,7 +61,7 @@ classdef poissyFit< matlab.mixin.Copyable
         parms                   % Estimated parameters that capture the fluorescence best
         parmsError              % Errors on the parameter estimates.
         bootstrap               % Number of bootstrap sets used to estimate parms/parmsError.
-                % If this is 1, the parms are the result of
+        % If this is 1, the parms are the result of
         % the ML fit, if it is >1 they are the
         % mean of the bootstrap sets (and the error
         % the standard deviation across sets).
@@ -73,7 +72,7 @@ classdef poissyFit< matlab.mixin.Copyable
         nrTimePoints        % Time points per trial
         nrTrials            % Number of trials
         nrObservations      % Total number of Fluorescence observations (nrTimePoints*nrTrials)
-        nrSpikesMax         % Maximum number of spikes in a single bin (derived from maxRate)        
+        nrSpikesMax         % Maximum number of spikes in a single bin (derived from maxRate)
     end
 
     %% Get methods for dependent members
@@ -115,7 +114,7 @@ classdef poissyFit< matlab.mixin.Copyable
             % Check whether the fun has deriviatives. This fails if the fun
             % is an anonymous function - the user then has to set
             % .hasDeriviatives manually.
-            if isempty(fun) 
+            if isempty(fun)
                 o.hasDerivatives  = 2;
             elseif nargout(fun) <0
                 warning('Please set o.hasDerivatives manually for this anonymous tuning function')
@@ -124,7 +123,7 @@ classdef poissyFit< matlab.mixin.Copyable
             end
             o.initialize
         end
-        
+
         function v = copyWithNewData(o,stim,fluor,dt,fun)
             % Construct a new object with the same parameters as an
             % existing object, but new stimuli ,fluorescence, and
@@ -157,10 +156,10 @@ classdef poissyFit< matlab.mixin.Copyable
                 x =repmat(o.stimulus,[o.nrTimePoints 1]);
                 if o.hasDerivatives ==2
                     [logLambda, dLogLambda, d2LogLambda] = o.tuningFunction(x(:)',parms);
-                elseif o.hasDerivatives ==1 
+                elseif o.hasDerivatives ==1
                     [logLambda, dLogLambda] = o.tuningFunction(x(:)',parms);
                 else
-                     logLambda = o.tuningFunction(x(:)',parms);
+                    logLambda = o.tuningFunction(x(:)',parms);
                 end
                 lambda = exp(logLambda);
             end
@@ -193,37 +192,36 @@ classdef poissyFit< matlab.mixin.Copyable
             yyaxis right
             hold on
             if false
-            pos = predictedTuningCurveHigh- predictedTuningCurve;
-            neg = predictedTuningCurve - predictedTuningCurveLow;
+                pos = predictedTuningCurveHigh- predictedTuningCurve;
+                neg = predictedTuningCurve - predictedTuningCurveLow;
 
-            h2= errorbar(o.uStimulus,1./o.binWidth*predictedTuningCurve,1./o.binWidth*pos,1./o.binWidth.*neg,'r');
+                h2= errorbar(o.uStimulus,1./o.binWidth*predictedTuningCurve,1./o.binWidth*pos,1./o.binWidth.*neg,'r');
             else
                 plot(o.uStimulus,1./o.binWidth*predictedTuningCurve,'r');
             end
             ylabel 'Lambda (spk/s)'
             xlabel 'Stimulus'
             title (['Parms: ' num2str(o.parms)])
-%            legend([h1(1) h2(1)],'Fluorescence with IQR','Rate with SE')
+            %            legend([h1(1) h2(1)],'Fluorescence with IQR','Rate with SE')
 
         end
 
-    
+
 
         function [bootParms,bootParmsError] = solve(o,boot,guess)
             %[bootParms,bootParmsError] = solve(o,boot,guess)
             % Solve the fitting problem. Optionally do this in bootstrap
-            % resampling fashion 
+            % resampling fashion
             % boot - Number of boostrap sets
-            % guess - Optional initial guess of the parameters of the fit. 
+            % guess - Optional initial guess of the parameters of the fit.
             %        If left unspecified, it uses a non-parametric estimate
             %        of the tuning cruve.
             arguments
                 o (1,1)
                 boot (1,1) double {mustBeInteger,mustBePositive} = 1  % Number of bootstrap sets
-                guess = o.bestGuess; % 
+                guess = o.bestGuess; %
             end
-          
-            
+
             if o.hasDerivatives<1 && o.options.SpecifyObjectiveGradient
                 warning('The tuning function does not provide derivatives; switching to quasi-newton')
                 o.options.SpecifyObjectiveGradient = false;
@@ -244,7 +242,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 for i=2:boot
                     h = waitbar(i/boot,h,'Bootstrapping');
                     thisTrials = randi(o.nrTrials,[1 o.nrTrials]);
-                    thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);                    
+                    thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);
                     solve(thisO,1,guess);
                     bootParms(i,:) = thisO.parms;
                     bootParmsError(i,:) = thisO.parmsError;
@@ -308,8 +306,8 @@ classdef poissyFit< matlab.mixin.Copyable
                 [~,prefIx] = max(o.tuningCurve);
                 o.bestGuess = [0 o.uStimulus(prefIx) -10 -10 -10];
             else
-                o.bestGuess = zeros(1,size(o.DM,1));                
-            end           
+                o.bestGuess = zeros(1,size(o.DM,1));
+            end
         end
 
 
@@ -336,16 +334,15 @@ classdef poissyFit< matlab.mixin.Copyable
         end
 
 
-
-
-        %%Calculates the log likelihood given the data and parameters
-        %%returns negative of log likelihood, derivatives, Hessian
         function [ll, derivative, hessian] = logLikelihood(o,parms)
+            % Calculates the log likelihood given the data and parameters
+            % returns negative of log likelihood, plus the analytic
+            % derivatives, Hessian (if available and requested)
             switch o.hasDerivatives
                 case 2
-                [lambda,dLogLambda,d2LogLambda] = lambdaFromStimulus(o,parms);
-                dLogLambda = dLogLambda(:,2:end);
-                d2LogLambda= d2LogLambda(:,:,2:end);
+                    [lambda,dLogLambda,d2LogLambda] = lambdaFromStimulus(o,parms);
+                    dLogLambda = dLogLambda(:,2:end);
+                    d2LogLambda= d2LogLambda(:,:,2:end);
                 case 1
                     [lambda,dLogLambda] = lambdaFromStimulus(o,parms);
                     dLogLambda = dLogLambda(:,2:end);
@@ -360,30 +357,33 @@ classdef poissyFit< matlab.mixin.Copyable
             sum_PXY = sum(pXY,1);
             ll = -sum(log(sum_PXY),2);
 
-            % Derivatives, if requested.
-            
-           if o.hasDerivatives>0 && nargout>1
+            % Derivatives, if requested and available.
+            if o.hasDerivatives>0 && nargout>1
                 sumX_PXY = o.nrSpikes'*pXY;
                 sumX_PXY_over_sum_PXY = sumX_PXY./sum_PXY;
                 gamma = sumX_PXY_over_sum_PXY - lambda;
                 derivative = -dLogLambda*gamma';
-           end
-           if o.hasDerivatives>1 && nargout>2
-                % Hessian                
-                    c = lambda - o.nrSpikes'.^2*pXY./sum_PXY + (sumX_PXY_over_sum_PXY).^2;
-                    part1  = bsxfun(@times,c,dLogLambda)*dLogLambda';
-                    part2 = -squeeze(sum(bsxfun(@times,d2LogLambda,reshape(gamma,1,1,[])),3));
-                    hessian = part1 + part2;
-           end            
+            end
+            if o.hasDerivatives>1 && nargout>2
+                % Hessian
+                c = lambda - o.nrSpikes'.^2*pXY./sum_PXY + (sumX_PXY_over_sum_PXY).^2;
+                part1  = bsxfun(@times,c,dLogLambda)*dLogLambda';
+                part2 = -squeeze(sum(bsxfun(@times,d2LogLambda,reshape(gamma,1,1,[])),3));
+                hessian = part1 + part2;
+            end
         end
 
     end
 
-
+    %% Static
     methods (Static)
+        % Pre-defined tuning functions for parametric fits. If you want to add
+        % additional tuning functions, note how these fit the log of the rate
+        % and logs of the parameters to enforce positive rates without putting any
+        % constraints on the underlying parameters that the optimization
+        % routine varies. That way fminunc can be used.
 
         function [y, firstDerivative, secondDerivative] = logVonMises(x,parms,domain)
-            %
             % Log Von Mises tuning function y = k*cos((x - mu)) + b;
             % INPUT
             % x - Stimulus angles in degrees. Use NaN for blanks (no stimulus)
@@ -395,6 +395,7 @@ classdef poissyFit< matlab.mixin.Copyable
             %  firstDerivative  - first derivative (analytic)
             %  secondDerivative - second derivative (analytic)
             %
+            % SEE demos/parametric
             arguments
                 x (:,:) double
                 parms (1,3) double
@@ -405,6 +406,10 @@ classdef poissyFit< matlab.mixin.Copyable
 
             delta = (x-preferred);
             y = kappa*cos(domainMultiplier*delta) + offset;
+
+            % The analytic derivatives (checked against the numeric finite
+            % differences).
+
             % [dy/doffset  dy/dpreferred dy/dkappa ]
             firstDerivative = [ones(1,length(x));
                 domainMultiplier*kappa*sin(domainMultiplier*delta);
@@ -428,17 +433,25 @@ classdef poissyFit< matlab.mixin.Copyable
         end
 
         function [y,firstDerivative] = logTwoVonMises(x,parms)
+            % Use this to fit a direction selective tuning function with
+            % one bump at the preferred, and a (potentially smaller) bump
+            % at the anti-preferred (=preferred +180).
             %
-            % Log of a Von Mises tuning function with a bump at mu and at mu+180:
-            % y = b*exp(k*cos((x - mu))) +b2*exp(k*cos((x - mu-180)))+offset;
+            % This uses the log of a the sum of two Von Mises functions:
+            % y = amp1*exp(kappa*cos((x - preferred))) +amp2*exp(kappa*cos((x - preferred-180)))+offset;
+            %
             % INPUT
             % x - Stimulus angles in degrees. Use NaN for blanks (no stimulus)
-            % parms - parameter vector - [offset, preferred , kappa, ]
-            % domain - Domain of angles ([360] or 180)
+            % parms - parameter vector - [offset, preferred , kappa, amp1 ,amp2]
             %
             % OUTPUT
             %  y - Value per x
+            % derivative - Analytic derivatice of log(y) with respect to the
+            %           five parameters. This helps the optimization
+            %           procedure converge.
             %
+            % SEE demos/twoVonMises for an example usage.
+
             arguments (Input)
                 x (:,:) double
                 parms (1,5) double
@@ -448,17 +461,19 @@ classdef poissyFit< matlab.mixin.Copyable
                 firstDerivative (5,:) double
             end
             offset = exp(parms(1)); preferred = parms(2); kappa = exp(parms(3));amp1=exp(parms(4)); amp2=exp(parms(5));
-            
-            term1 = amp1*exp(kappa*cosd(x-preferred));
-            term2 = amp2*exp(kappa*cosd(x-preferred-180)) ;
+            deg2rad =pi/180;
+            term1 = amp1*exp(kappa*cos(deg2rad*(x-preferred)));
+            term2 = amp2*exp(kappa*cos(deg2rad*(x-preferred-180)));
             twoVonM = term1 + term2 + offset;
             y = log(twoVonM);
-
+            % The analytic derivatives (checked against the numeric finite
+            % differences).
+            % [dy/doffset  dy/dpreferred dy/dkappa dy/damp1 dy/damp2]
             firstDerivative = repmat(1./twoVonM,[5 1]).*cat(1,offset*ones(1,numel(x)),...
-                                           term1.*kappa.*sind(x-preferred) + term2.*kappa.*sind(x-preferred-180),...
-                                           kappa.*cosd(x-preferred).*term1 +kappa.*cosd(x-preferred-180).*term2,...
-                                           amp1.*exp(kappa*cosd(x-preferred)),...
-                                           amp2.*exp(kappa*cosd(x-preferred-180)));
+                term1.*kappa.*deg2rad.*sin(deg2rad*(x-preferred)) + term2.*deg2rad.*kappa.*sin(deg2rad*(x-preferred-180)),...
+                kappa.*cos(deg2rad.*(x-preferred)).*term1 +kappa.*cos(deg2rad.*(x-preferred-180)).*term2,...
+                amp1.*exp(kappa*cos(deg2rad.*(x-preferred))),...
+                amp2.*exp(kappa*cos(deg2rad.*(x-preferred-180))));
         end
 
     end

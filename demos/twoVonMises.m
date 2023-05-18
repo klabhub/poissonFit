@@ -14,9 +14,9 @@ dt               = 0.1;     % One bin is 100 ms.
 tau              = .5;      % Fluorescence indicator decay
 fPerSpike        = 50;      % Fluorescence per spike
 measurementNoise = 1;  % Stdev of the noise
-tuningParms      = [0 90 .01 1 .1]; % log(Offset)Preferred log(Kappa) log(amp1) log(amp2)
+tuningParms      = [0 90 .01 1 .5]; % log(Offset)Preferred log(Kappa) log(amp1) log(amp2)
 % Use the built-in logTwoVonMises function
-tc               = @poissonFit.logTwoVonMises;
+tc               = @poissyFit.logTwoVonMises;
 
 % Generate data
 ori         = repmat(oriPerTrial,[1 nrRepeats]);
@@ -35,7 +35,7 @@ fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % 
 % corresponding fluorescence, the time bin and the tuning function we wish
 % to estimate.
 % 
-o = poissonFit(ori(1,:),fluorescence,dt,tc);
+o = poissyFit(ori(1,:),fluorescence,dt,tc);
 
 
 % Make sure the object's assumptions match those of the experiment
@@ -52,7 +52,7 @@ o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
     'MaxFunctionEvaluations',5e3); % Central is slower but more accurate
 
 % Solve 
-guess = [0 80 0 0 0];
+guess = [0 0 0 0 0];
 solve(o,1,guess);
 figure;
 plot(o); % Show the result.
