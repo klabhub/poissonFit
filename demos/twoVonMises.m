@@ -11,10 +11,10 @@ oriPerTrial      = 0:30:330;  % These are the orientations in the experiment
 nrRepeats        =  12;    % Each orientation is shown this many times
 nrTimePoints     = 10;      % 10 "bins" in each trial
 dt               = 0.1;     % One bin is 100 ms.
-tau              = .5;      % Fluorescence indicator decay
+tau              = 1.2;      % Fluorescence indicator decay
 fPerSpike        = 50;      % Fluorescence per spike
 measurementNoise = 1;  % Stdev of the noise
-tuningParms      = [0 90 .01 1 .5]; % log(Offset)Preferred log(Kappa) log(amp1) log(amp2)
+tuningParms      = [0 90 .01 .5 .1]; % log(Offset)Preferred log(Kappa) log(amp1) log(amp2)
 % Use the built-in logTwoVonMises function
 tc               = @poissyFit.logTwoVonMises;
 
@@ -26,8 +26,12 @@ LAMBDA      = repmat(lambda,[nrTimePoints 1]); % Same lambda each time point
 nrSpikes    = poissrnd(LAMBDA); % The spike counts
 decayFun    = fPerSpike*exp(-(0:100)*dt/tau); % F/Ca decay
 pad         = zeros(numel(decayFun)-1,1); % Start with blank
-fluorescence = conv([pad;nrSpikes(:)],decayFun','valid'); % Generate the ca signal
-fluorescence  =reshape(fluorescence,[nrTimePoints nrTrials]);
+fluorescence = nan(size(nrSpikes));
+% Simulate that trials are widely spaced, so no Ca spillover from trial to
+% trial
+for tr=1:nrTrials
+    fluorescence(:,tr) = conv([pad;nrSpikes(:,tr)],decayFun','valid'); % Generate the ca signal
+end
 fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % Add noise
 
 %% Now use the poissonFit object to estimate the tuning curve parameters.
@@ -41,22 +45,24 @@ o = poissyFit(ori(1,:),fluorescence,dt,tc);
 % Make sure the object's assumptions match those of the experiment
 o.tau =tau;
 o.fPerSpike = fPerSpike;
+o.measurementNoise = measurementNoise;
 % Set options of the optimization (fminunc)
 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
-    'MaxIter',1e8, ...
     'SpecifyObjectiveGradient',true, ...
+    'HessianFcn',[],... % Approximate using finite differences
     'display','final-detailed', ...
-    'CheckGradients',true, ... 
     'diagnostics','off', ...   
-    'FiniteDifferenceType','central',...
-    'MaxFunctionEvaluations',5e3); % Central is slower but more accurate
+    'MaxFunctionEvaluations',5e3);
 
-% Solve 
-guess = [0 0 0 0 0];
-solve(o,1,guess);
+% Boostrap solutions
+% No initial value (guess) is provided; poissyFit will estimate the
+% preferred from the rates (non-parametrically) and start from that point.
+% That seems to be key to finding a good solution.
+solve(o,100);
 figure;
+yyaxis right
+plot(ori,lambda/o.binWidth,'g')
+
 plot(o); % Show the result.
 hold on
-yyaxis left
-scatter(ori,lambda./max(lambda)*0.95*max(ylim),'k*')
 

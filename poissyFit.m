@@ -22,6 +22,7 @@ classdef poissyFit< matlab.mixin.Copyable
         stimHistory     = 0.1 % in seconds. was stimHistoryLength
         tau             = 1.2 % Fluorescence decay time constant [s]
         fPerSpike      = 80  % Fluorescence per spike. This is a true free parameter
+        measurementNoise  = 1;      % Standard deviation of Fluorescence measurement 
 
         tuningFunction  = []  % Tuning function for direct parametric estimation.
         % Optimization parameters.
@@ -50,8 +51,7 @@ classdef poissyFit< matlab.mixin.Copyable
         fluorescence            % [nrTimePoints nrTrials]
         stimulus                % [1 nrTrials]
         binWidth                % Time bins for the fluorescence signal in seconds.
-        measurementNoise        % Estimated as the mean of the standard deviation of the Fluorescence in a trial
-
+     
         uStimulus               % Unique stimulus values
         stimulusIx              % Index into uStimulus for each trial
         tuningCurve             % Non-parametric estimate of the tuning curve
@@ -121,7 +121,6 @@ classdef poissyFit< matlab.mixin.Copyable
             else
                 o.hasDerivatives  = nargout(fun)-1;
             end
-            o.initialize
         end
 
         function v = copyWithNewData(o,stim,fluor,dt,fun)
@@ -171,7 +170,6 @@ classdef poissyFit< matlab.mixin.Copyable
 
         function plot(o)
             % Plot an overview of the data and tuning curve fits/
-
             if isempty(o.tuningFunction)
 
                 predicted = reshape(lambdaFromStimulus(o,o.parms),[o.nrTimePoints o.nrTrials]);
@@ -195,18 +193,15 @@ classdef poissyFit< matlab.mixin.Copyable
             ylabel 'Fluorescence (a.u.)'
             yyaxis right
             hold on
-            if false
+            
                 pos = predictedTuningCurveHigh- predictedTuningCurve;
                 neg = predictedTuningCurve - predictedTuningCurveLow;
 
                 h2= errorbar(o.uStimulus,1./o.binWidth*predictedTuningCurve,1./o.binWidth*pos,1./o.binWidth.*neg,'r');
-            else
-                plot(o.uStimulus,1./o.binWidth*predictedTuningCurve,'r');
-            end
             ylabel 'Lambda (spk/s)'
             xlabel 'Stimulus'
             title (['Parms: ' num2str(o.parms)])
-            %            legend([h1(1) h2(1)],'Fluorescence with IQR','Rate with SE')
+           legend([h1(1) h2(1)],'Fluorescence with IQR','Rate with SE')
 
         end
 
@@ -223,13 +218,18 @@ classdef poissyFit< matlab.mixin.Copyable
             arguments
                 o (1,1)
                 boot (1,1) double {mustBeInteger,mustBePositive} = 1  % Number of bootstrap sets
-                guess = o.bestGuess; %
+                guess = [];                 
             end
-
+            
+            
             if o.hasDerivatives<1 && o.options.SpecifyObjectiveGradient
                 warning('The tuning function does not provide derivatives; switching to quasi-newton')
                 o.options.SpecifyObjectiveGradient = false;
                 o.options.Algorithm = 'quasi-newton';
+            end
+            o.initialize
+            if isempty(guess)
+                guess  = o.bestGuess;
             end
             % Solve the minimization problem.
             [o.parms,o.exitFlag,~,~,~,hessian] = fminunc(@o.logLikelihood,guess,o.options);
@@ -270,7 +270,6 @@ classdef poissyFit< matlab.mixin.Copyable
     %% Protected, internal functions
     methods  (Access=protected)
         function initialize(o)
-            o.measurementNoise  = mean(std(o.fluorescence,1,"omitnan"));
             o.nrSpikes             = (0:o.nrSpikesMax)';
             o.nrSpikesFactorial    = repmat(factorial(o.nrSpikes),[1 o.nrObservations]);
             o.nrSpikesPerTimepoint = repmat(o.nrSpikes,[1 o.nrObservations]);
@@ -329,7 +328,6 @@ classdef poissyFit< matlab.mixin.Copyable
             nrX = numel(uX);
             xIx = repmat(xIx(:)',[o.nrTimePoints 1]);
 
-
             DM = zeros([nrX,o.nrObservations]);
             timeIx = repmat((1:o.nrTimePoints)',[o.nrTrials 1]);
             trialIx = repmat((1:o.nrTrials),[o.nrTimePoints 1]);
@@ -377,7 +375,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 % Hessian
                 c = lambda - tensorprod(o.nrSpikes.^2,pXY./sum_PXY,1,1) + (sumX_PXY_over_sum_PXY).^2;
                 part1  = tensorprod((c.*dLogLambda),dLogLambda,[2 3],[2 3]);
-                part2 = - sum(d2LogLambda.*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4])
+                part2 = - sum(d2LogLambda.*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4]);
                 hessian = part1 + part2;
             end
         end
@@ -483,6 +481,12 @@ classdef poissyFit< matlab.mixin.Copyable
                 kappa.*cos(deg2rad.*(x-preferred)).*term1 +kappa.*cos(deg2rad.*(x-preferred-180)).*term2,...
                 amp1.*exp(kappa*cos(deg2rad.*(x-preferred))),...
                 amp2.*exp(kappa*cos(deg2rad.*(x-preferred-180))));
+
+            % Handle blank (no stimulus)
+            blankInds = isnan(x);
+            y(blankInds) = offset;
+            firstDerivative(:,blankInds) = 0;
+            
         end
 
     end

@@ -13,8 +13,8 @@ nrRepeats        =  12;    % Each orientation is shown this many times
 nrTimePoints     = 10;      % 10 "bins" in each trial
 dt               = 0.1;     % One bin is 100 ms.
 tau              = .5;      % Fluorescence indicator decay
-fPerSpike        = 50;      % Fluorescence per spike
-measurementNoise = 0.1;  % Stdev of the noise
+fPerSpike        = 50;      % Ca/Fluorescence per spike
+measurementNoise = 0;  % Stdev of the noise
 tuningParms      = [0 90 0]; % Offset Preferred log(Kappa)
 % Use the built-in von Mises function, periodic over 180 (i.e. orientation not direction).
 tc               = @(x,parms)  poissyFit.logVonMises(x,parms,180);
@@ -23,12 +23,16 @@ tc               = @(x,parms)  poissyFit.logVonMises(x,parms,180);
 ori         = repmat(oriPerTrial,[1 nrRepeats]);
 nrTrials    = numel(oriPerTrial)*nrRepeats;
 lambda      =  exp(tc(ori,tuningParms)); % Lambda, the poisson rate, per trial
-lambda      = repmat(lambda,[nrTimePoints 1]); % Same lambda each time point
-nrSpikes    = poissrnd(lambda); % The spike counts
+LAMBDA     = repmat(lambda,[nrTimePoints 1]); % Same lambda each time point
+nrSpikes    = poissrnd(LAMBDA); % The spike counts
 decayFun    = fPerSpike*exp(-(0:100)*dt/tau); % F/Ca decay
 pad         = zeros(numel(decayFun)-1,1); % Start with blank
-fluorescence = conv([pad;nrSpikes(:)],decayFun','valid'); % Generate the ca signal
-fluorescence  =reshape(fluorescence,[nrTimePoints nrTrials]);
+fluorescence = nan(size(nrSpikes));
+% Simulate that trials are widely spaced, so no Ca spillover from trial to
+% trial
+for tr=1:nrTrials
+    fluorescence(:,tr) = conv([pad;nrSpikes(:,tr)],decayFun','valid'); % Generate the ca signal
+end
 fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % Add noise
 
 %% Now use the poissyFit object to estimate the tuning curve parameters.
@@ -37,7 +41,7 @@ fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % 
 % to estimate.
 % 
 o = poissyFit(ori(1,:),fluorescence,dt,tc);
-o.hasDerivatives = 2;
+o.hasDerivatives = 2; % The logVonMises has both derivatives and hessian output
 % Make sure the object's assumptions match those of the experiment
 o.tau =tau;
 o.fPerSpike = fPerSpike;
@@ -45,6 +49,7 @@ o.fPerSpike = fPerSpike;
 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
     'MaxIter',1e8, ...
     'SpecifyObjectiveGradient',true, ...
+    'HessianFcn','objective',...  % The logVonMises returns the Hessian; use it
     'display','final-detailed', ...
     'CheckGradients',false, ... 
     'diagnostics','on', ...
@@ -54,9 +59,10 @@ o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
 % Solve 
 solve(o);
 figure;
-plot(o); % Show the result.
+yyaxis right
+plot(ori,lambda/o.binWidth,'g')
 hold on
-plot(ori,lambda,'g')
+plot(o); % Show the result.
 
 %% Bootstrap
 % To asses the robustness of the fit,the tool uses bootstrapping: trials
@@ -67,16 +73,15 @@ plot(ori,lambda,'g')
 % whether the fit is reliable.
 nrBoostrapSets = 100;
 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
-    'MaxIter',1e8, ...
     'SpecifyObjectiveGradient',true, ...    
+    'HessianFcn','objective',... % The logVonMises returns the Hessian.
     'display','off', ...
-    'CheckGradients',false, ... 
     'diagnostics','off'); 
 
 solve(o,nrBoostrapSets); 
 figure;
+yyaxis right
+plot(ori,lambda/o.binWidth,'g')
 plot(o)
-hold on
-plot(ori,lambda,'g')
 
 
