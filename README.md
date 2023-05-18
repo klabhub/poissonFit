@@ -21,8 +21,8 @@ If these assumptions are met, this code will estimate a tuning curve (rate as a 
   
   
   ## Installation
-  Clone this repository to your machine (e.g. to ```c:\github\poissonFit```), and add the folder to your Matlab path
-  ```addpath('c:\github\poissonFit')```. 
+  Clone this repository to your machine (e.g. to ```c:\github\poissyFit```), and add the folder to your Matlab path
+  ```addpath('c:\github\poissyFit')```. 
   Then check out the demos folder:
   1. demos/simple.m : poisson rate estimation
   2. demos/parametric.m : parametric tuning curve estimation (von Mises)
