@@ -16,8 +16,17 @@ If these assumptions are met, this code will estimate a tuning curve (rate as a 
   
   My implementation borrows heavily from the code provided at  https://github.com/eladganmor/Imaging_Analysis. I primarily added code comments, added optimization parameters, bootstrapping.
   
-  To get started with this package, please look at demos/simple and demos/parametric
+  
   Bart Krekelberg  - May 2023.
+  
+  
+  ## Installation
+  Clone this repository to your machine (e.g. to ```c:\github\poissonFit```), and add the folder to your Matlab path
+  ```addpath('c:\github\poissonFit')```. 
+  Then check out the demos folder:
+  1. demos/simple.m : poisson rate estimation
+  2. demos/parametric.m : parametric tuning curve estimation (von Mises)
+
   
   
   
