@@ -7,7 +7,7 @@
 
 rng default
 % Define "experiment" and simulated neural responses
-oriPerTrial      = 0:30:330;  % These are the orientations in the experiment
+ori                 = 0:30:330;  % These are the orientations in the experiment
 nrRepeats        =  12;    % Each orientation is shown this many times
 nrTimePoints     = 10;      % 10 "bins" in each trial
 dt               = 0.1;     % One bin is 100 ms.
@@ -18,10 +18,11 @@ tuningParms      = [0 90 .01 .5 .1]; % log(Offset)Preferred log(Kappa) log(amp1)
 % Use the built-in logTwoVonMises function
 tc               = @poissyFit.logTwoVonMises;
 
+groundTruth     = exp(tc(ori,tuningParms));
 % Generate data
-ori         = repmat(oriPerTrial,[1 nrRepeats]);
-nrTrials    = numel(oriPerTrial)*nrRepeats;
-lambda      =  exp(tc(ori,tuningParms)); % Lambda, the poisson rate, per trial
+oriPerTrial         = repmat(ori,[1 nrRepeats]);
+nrTrials    = numel(oriPerTrial);
+lambda      =  exp(tc(oriPerTrial,tuningParms)); % Lambda, the poisson rate, per trial
 LAMBDA      = repmat(lambda,[nrTimePoints 1]); % Same lambda each time point
 nrSpikes    = poissrnd(LAMBDA); % The spike counts
 decayFun    = fPerSpike*exp(-(0:100)*dt/tau); % F/Ca decay
@@ -39,9 +40,9 @@ fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % 
 % corresponding fluorescence, the time bin and the tuning function we wish
 % to estimate.
 % 
-o = poissyFit(ori(1,:),fluorescence,dt,tc);
+o = poissyFit(oriPerTrial(1,:),fluorescence,dt,tc);
 
-
+o.nrWorkers = 8;% Use parfor
 % Make sure the object's assumptions match those of the experiment
 o.tau =tau;
 o.fPerSpike = fPerSpike;
@@ -61,7 +62,8 @@ o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
 solve(o,100);
 figure;
 yyaxis right
-plot(ori,lambda/o.binWidth,'g')
+
+plot(ori,groundTruth/o.binWidth,'g')
 
 plot(o); % Show the result.
 hold on

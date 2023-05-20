@@ -9,20 +9,21 @@ classdef poissyFit< matlab.mixin.Copyable
     % My implementation started from the code provided here:
     % https://github.com/eladganmor/Imaging_Analysis
     % and added some code checking, bootstrapping, code comments, and
-    % additinional functionality to fit double von Mises. 
+    % additinional functionality to fit double von Mises.
     %
     % See README.md , demos/parammetric, demos/simple, demos/twoVonMises
     %
     % BK - May 2023.
     properties (SetAccess=public,GetAccess=public)
+        nrWorkers       = 0; % Set to >0 to use parfor for bootstrap resampling
         % Meta parameters
         maxRate         = 100 %  The maximum number of spikes (per second) that a neuron can reasonable fire under the conditions of the experiment
-
+        spikeCountDistribution (1,1) string = "POISSON";% Assumed spike count distribution. POISSON or EXPONENTIAL
         % Model parameters
         stimHistory     = 0.1 % in seconds. was stimHistoryLength
         tau             = 1.2 % Fluorescence decay time constant [s]
         fPerSpike      = 80  % Fluorescence per spike. This is a true free parameter
-        measurementNoise  = 1;      % Standard deviation of Fluorescence measurement 
+        measurementNoise  = 1;      % Standard deviation of Fluorescence measurement
 
         tuningFunction  = []  % Tuning function for direct parametric estimation.
         % Optimization parameters.
@@ -43,22 +44,23 @@ classdef poissyFit< matlab.mixin.Copyable
         % Matrices that are constant for a given problem and computed only
         % once in initialize:
         nrSpikes                % [nrSpikesMax 1] - Spike counts over which the algorithm marginalizes.
-        pFGivenSpikes           % [nrSpikesMax nrObservations] - Probability of the observed F given the spikes
+        pFGivenSpikes           % [nrSpikesMax nrTimePoints nrTrials] - Probability of the observed F given the spikes
         nrSpikesFactorial       % nrSpikes!
-        nrSpikesPerTimepoint    % [nrSpikesMax nrObservations] - Matrix with nrSpikes in each column
-        DM                      % [nrPredictors nrObservations] - Design matrix
+        nrSpikesPerTimepoint    % [nrSpikesMax nrTimePoints nrTrials] - Matrix with nrSpikes in each column
+        DM                      % [nrPredictors nrTimePoints nrTrials] - Design matrix
+        fTilde                  % [nrTimePoints nrTrials]
         % The raw data
         fluorescence            % [nrTimePoints nrTrials]
         stimulus                % [1 nrTrials]
         binWidth                % Time bins for the fluorescence signal in seconds.
-     
+
         uStimulus               % Unique stimulus values
         stimulusIx              % Index into uStimulus for each trial
         tuningCurve             % Non-parametric estimate of the tuning curve
         tuningCurveErr          % IQR for tuning curve
         bestGuess               % Initial guess of the parameters (from nonparametric tuning)
         blank                   % Response to blank (coded as NaN in the stimulus)
-        blankErr                % 
+        blankErr                %
 
         parms                   % Estimated parameters that capture the fluorescence best
         parmsError              % Errors on the parameter estimates.
@@ -75,6 +77,7 @@ classdef poissyFit< matlab.mixin.Copyable
         nrTrials            % Number of trials
         nrObservations      % Total number of Fluorescence observations (nrTimePoints*nrTrials)
         nrSpikesMax         % Maximum number of spikes in a single bin (derived from maxRate)
+        nrParms             % Nunmber of estimated parameters
     end
 
     %% Get methods for dependent members
@@ -94,6 +97,13 @@ classdef poissyFit< matlab.mixin.Copyable
             v = ceil(o.maxRate*o.binWidth);
         end
 
+        function v= get.nrParms(o)
+            if isempty(o.tuningFunction)
+                v = size(o.DM,1);
+            else
+                v = numel(o.bestGuess);
+            end
+        end
 
     end
 
@@ -119,7 +129,7 @@ classdef poissyFit< matlab.mixin.Copyable
             % .hasDeriviatives manually.
             if isempty(fun)
                 o.hasDerivatives  = 2;
-            elseif ~isempty(pv.hasDerivatives) 
+            elseif ~isempty(pv.hasDerivatives)
                 o.hasDerivatives = pv.hasDerivatives;
             elseif nargout(fun) <0
                 warning('Please set o.hasDerivatives manually for this anonymous tuning function')
@@ -166,47 +176,181 @@ classdef poissyFit< matlab.mixin.Copyable
                     dLogLambda = permute(repmat(dLogLambda,[1 1 o.nrTimePoints]),[1 3 2]);
                 else
                     logLambda = o.tuningFunction(o.stimulus,parms);
-                end              
+                end
                 lambda = exp(logLambda);
                 lambda=reshape(repmat(lambda,[o.nrTimePoints 1]),[1 o.nrTimePoints o.nrTrials]);
 
             end
         end
 
-        function plot(o)
+        function plot(o,pv)
+            arguments
+                o (1,1) poissyFit
+                pv.showErrorbars  = false
+            end
             % Plot an overview of the data and tuning curve fits/
             if isempty(o.tuningFunction)
-
-                predicted = reshape(lambdaFromStimulus(o,o.parms),[o.nrTimePoints o.nrTrials]);
-                meanPredicted = mean(predicted,1,"omitnan"); % Average over time points
-
-                predictedTuningCurve= accumarray(o.stimulusIx,meanPredicted',[],@median);
-
-                predictedHigh = reshape(lambdaFromStimulus(o,o.parms+o.parmsError),[o.nrTimePoints o.nrTrials]);
-                meanPredictedHigh = mean(predictedHigh,1,"omitnan"); % Average over time points
-                predictedTuningCurveHigh= accumarray(o.stimulusIx,meanPredictedHigh',[],@median);
-                predictedLow = reshape(lambdaFromStimulus(o,o.parms-o.parmsError),[o.nrTimePoints o.nrTrials]);
-                meanPredictedLow = mean(predictedLow,1,"omitnan"); % Average over time points
-                predictedTuningCurveLow= accumarray(o.stimulusIx,meanPredictedLow',[],@median);
+                predictedTuningCurve= exp(o.parms(2:end) + o.parms(1));
+                predictedTuningCurveHigh= exp(o.parms(2:end)+o.parmsError(2:end)  + o.parms(1) + o.parmsError(1));
+                predictedTuningCurveLow= exp(o.parms(2:end)-o.parmsError(2:end)  + o.parms(1) - o.parmsError(1));
             else
                 predictedTuningCurve = exp(o.tuningFunction(o.uStimulus,o.parms));
                 predictedTuningCurveHigh = exp(o.tuningFunction(o.uStimulus,o.parms+o.parmsError));
                 predictedTuningCurveLow= exp(o.tuningFunction(o.uStimulus,o.parms-o.parmsError));
             end
+            pos = predictedTuningCurveHigh- predictedTuningCurve;
+            neg = predictedTuningCurve - predictedTuningCurveLow;
+
             yyaxis left
-            h1= errorbar(o.uStimulus,o.tuningCurve,o.tuningCurveErr/2,'b');
-            ylabel 'Fluorescence (a.u.)'
+            h1= errorbar(o.uStimulus,1/o.binWidth*o.tuningCurve,1./o.binWidth*o.tuningCurveErr/2,'b');
+            ylabel 'Fluorescence (/s)'
             yyaxis right
             hold on
-            
-                pos = predictedTuningCurveHigh- predictedTuningCurve;
-                neg = predictedTuningCurve - predictedTuningCurveLow;
-
+            if pv.showErrorbars
                 h2= errorbar(o.uStimulus,1./o.binWidth*predictedTuningCurve,1./o.binWidth*pos,1./o.binWidth.*neg,'r');
+            else
+                h2= plot(o.uStimulus,1./o.binWidth*predictedTuningCurve,'r');
+            end
             ylabel 'Lambda (spk/s)'
             xlabel 'Stimulus'
-            title (['Parms: ' num2str(o.parms)])
-           legend([h1(1) h2(1)],'Fluorescence with IQR','Rate with SE')
+            title (['Parms: ' num2str(o.parms,2)])
+            legend([h1(1) h2(1)],'Fluorescence with IQR','Rate with SE')
+
+        end
+
+
+
+        function [r,bootParms,rSpikes,spikeBootParms,rCross] = splitHalves(o,nrBoot,guess,spikes)
+            % Asess performance by comparing parameter estimates based on
+            % split halves of the data.
+            %
+            % If the estimation of the rate is successful then identical
+            % repeats of the same condition (e.g., stimulus orientation)
+            % should result in identical estimates of the underlying rate.
+            % Therefore the correlation between parameters based on one half of
+            % trials and comparing it with the other half of trials
+            % quantifies how well the algorithm works.
+            % Even a perfect estimator would have a correlation less than 1
+            % because of Poisson noise on the spike counts.
+            % See Pachitariu et al. J Neurosci 2018 38(37):7976 –7985.
+            %
+            % For direct, non-parametric estimates the correlation is
+            % calculated directly between the estimates based on the split
+            % halves.
+            % For parametric estimates, we estimate the parameters of the
+            % tuning function and from those the predicted response at each
+            % of the conditions, and correlate these tuning functions based on
+            % the split halves.
+            %
+            % To compare poissyFits performance with a sequential estimate
+            % based on spike deconvolution, pass the deconvolved spike
+            % count estimate as 'spikes'. This matrix should match the fluorescence
+            % matrix [nrTimePoints nrTrials] used by poissyFit.
+            %
+
+            arguments (Input)
+                o (1,1) poissyFit
+                nrBoot  (1,1) double {mustBeInteger,mustBePositive}  =250  % The number of randomly sampled split halves to use
+                guess = []  % The initial guess for parameter estimation ([] uses the internal guess).
+                spikes (:,:) double = [];
+            end
+            arguments (Output)
+                r (1,1) double  % Mean of the split-half correlation acros bootstrap sets
+                bootParms double  % Parameter estimates in each bootstrap set
+                rSpikes (1,1) double  % Mean of the split-half correlation in the deconvolved spikes
+                spikeBootParms double % Parameter estimates based one the spikes in each bootstrap set
+                rCross (1,1) double % Mean of the correlation between fluorescence and spike estimates
+            end
+            initialize(o);
+            % Avoid warnings on display during bootstrapping
+            o.options.Display = 'off';
+            o.options.Diagnostics = 'off';
+            o.options.CheckGradients = false;
+            bootParmsOne   = nan(o.nrParms,nrBoot);
+            bootParmsOther = nan(o.nrParms,nrBoot);
+            r =nan(nrBoot,1);
+            if ~isempty(spikes)
+                % Compare with results based on deconvolved spikes
+                % (e.g. obtained from some other package like suite2p or caiman that
+                % does the deconvolution)
+                % We can use the same fitting methods by creating a
+                % poissyFit object in which ca/F decays instantly
+                % (tau=0) and each spike produces 1 unit of ca/F.
+                % We also assume that the measurement noise on the spikes
+                % is a scaled version of the measurement noise on the
+                % fluorescence.
+                oSpk = o.copyWithNewData(o.stimulus,spikes,o.binWidth,o.tuningFunction);
+                oSpk.tau =0;
+                oSpk.fPerSpike =1;
+                oSpk.measurementNoise = mean(spikes,'all','omitnan')./mean(o.fluorescence,'all','omitnan').*o.measurementNoise;
+                % Preallocate
+                spikeBootParmsOne = nan(o.nrParms,nrBoot);
+                spikeBootParmsOther= nan(o.nrParms,nrBoot);
+                rSpikes =nan(nrBoot,1);
+                rCross = nan(nrBoot,1);
+            end
+            % Bootstrap fitting on split halves
+            %parfor (i=1:nrBoot, o.nrWorkers)
+            for i=1:nrBoot % Uncomment for debugging
+                [oneHalfTrials,otherHalfTrials] =resampleTrials(o,false,0.5) ;
+                thisO = o.copyWithNewData(o.stimulus(:,oneHalfTrials),o.fluorescence(:,oneHalfTrials),o.binWidth,o.tuningFunction);
+                solve(thisO,1,guess);
+                bootParmsOne(:,i) = thisO.parms';
+
+                thisO = o.copyWithNewData(o.stimulus(:,otherHalfTrials),o.fluorescence(:,otherHalfTrials),o.binWidth,o.tuningFunction);
+                solve(thisO,1,guess);
+                bootParmsOther(:,i) = thisO.parms';
+
+
+                if ~isempty(spikes)
+                    % Use the same trials to estimat spike tuning from the
+                    % oSpk object
+                    thisO = oSpk.copyWithNewData(oSpk.stimulus(:,oneHalfTrials),oSpk.fluorescence(:,oneHalfTrials),o.binWidth,o.tuningFunction); %#ok<PFBNS>
+                    solve(thisO,1,guess);
+                    spikeBootParmsOne(:,i) = thisO.parms';
+
+                    thisO = oSpk.copyWithNewData(oSpk.stimulus(:,otherHalfTrials),oSpk.fluorescence(:,otherHalfTrials),o.binWidth,o.tuningFunction);
+                    solve(thisO,1,guess);
+                    spikeBootParmsOther(:,i) = thisO.parms';
+                end
+            end
+
+
+            %% Determime correlations
+            for i=1:nrBoot
+                if isempty(o.tuningFunction)
+                    % Ignore the grand mean, correlate the rest
+                    r(i)= corr(bootParmsOne(2:end,i),bootParmsOther(2:end,i));
+                    if ~isempty(spikes)
+                        rSpikes(i)= corr(spikeBootParmsOne(2:end,i),spikeBootParmsOther(2:end,i));
+                        rCross(i) = (corr(spikeBootParmsOne(2:end,i),bootParmsOne(2:end,i)) +corr(spikeBootParmsOther(2:end,i),bootParmsOther(2:end,i)))/2;
+                    end
+                else
+                    % Predict the tuning and correlate those
+                    tc1= o.tuningFunction(o.uStimulus,bootParmsOne(:,i))';
+                    tc2 = o.tuningFunction(o.uStimulus,bootParmsOther(:,i))';
+                    r(i) = corr(tc1,tc2);
+                    if ~isempty(spikes)
+                        tcSpk1= o.tuningFunction(o.uStimulus,spikeBootParmsOne(:,i))';
+                        tcSpk2 = o.tuningFunction(o.uStimulus,spikeBootParmsOther(:,i))';
+                        rSpikes(i)= corr(tcSpk1,tcSpk2);
+                        rCross(i) = (corr(tc1,tcSpk1) +corr(tc2,tcSpk2))/2;
+                    end
+                end
+            end
+            r = mean(r);
+            if ~isempty(spikes)
+                rSpikes= mean(rSpikes);
+            end
+            if nargout>1
+                bootParms = cat(3,bootParmsOne,bootParmsOther);
+            end
+            if nargout >3
+                spikeBootParms = cat(3,spikeBootParmsOne,spikeBootParmsOther);
+            end
+            if nargout >4
+                rCross = mean(rCross);
+            end
 
         end
 
@@ -223,10 +367,9 @@ classdef poissyFit< matlab.mixin.Copyable
             arguments
                 o (1,1)
                 boot (1,1) double {mustBeInteger,mustBePositive} = 1  % Number of bootstrap sets
-                guess = [];                 
+                guess = [];
             end
-            
-            
+
             if o.hasDerivatives<1 && o.options.SpecifyObjectiveGradient
                 warning('The tuning function does not provide derivatives; switching to quasi-newton')
                 o.options.SpecifyObjectiveGradient = false;
@@ -245,19 +388,15 @@ classdef poissyFit< matlab.mixin.Copyable
             % Perform bootstrap resampling to get a robust estimate of the
             % parms and their errors
             if boot>1
-                h = waitbar(0,'Bootstrapping');
                 bootParms       = nan(boot,numel(o.parms));
                 bootParmsError  = nan(boot,numel(o.parms));
-                for i=2:boot
-                    h = waitbar(i/boot,h,'Bootstrapping');
-                    thisTrials = randi(o.nrTrials,[1 o.nrTrials]);
+                parfor (i=2:boot,o.nrWorkers)
+                    thisTrials = resampleTrials(o,true,1);
                     thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);
                     solve(thisO,1,guess);
                     bootParms(i,:) = thisO.parms;
                     bootParmsError(i,:) = thisO.parmsError;
-
                 end
-                close(h)
                 % Store the mean and std across sets as the outcome
                 o.parms      = mean(bootParms,1,'omitnan');
                 o.parmsError = std(bootParms,0,1,'omitnan');
@@ -282,32 +421,40 @@ classdef poissyFit< matlab.mixin.Copyable
             % plus the new F generated by the spikes in the current bin
             % F is  [nrTimePoints nrTrials] so the first bin cannot really
             % be used as its preceding bin may not be in the matrix (e.g.
-            % if only a subset of trials is analyzed). 
+            % if only a subset of trials is analyzed).
             F = permute(repmat(o.fluorescence,[1 1 o.nrSpikesMax+1]),[3 1 2]);
+            switch (o.spikeCountDistribution)
+                case "POISSON"
             fExpected = o.fPerSpike.*o.nrSpikesPerTimepoint(:,2:end,:) + F(:,1:end-1,:).*exp(-o.binWidth/o.tau);
             % The probability of observing an F given the spikes is a
             % normal distribution with a stdev equal ot the measuremnt
             % noise.Adding eps to avoid underflow.
-            
+
             o.pFGivenSpikes = eps+normpdf(F(:,2:end,:) - fExpected,0,o.measurementNoise);
             % The first bin has no preceding time bin; set it to NaN.
             o.pFGivenSpikes = cat(2, nan(o.nrSpikesMax+1, 1,o.nrTrials),o.pFGivenSpikes);
+
+                case "EXPONENTIAL"
+                o.fTilde = cat(1,nan(1,o.nrTrials), 1/o.fPerSpike*(o.fluorescence(1:end-1,:).*exp(-o.binWidth/o.tau)-o.fluorescence(2:end,:)));
+               
+            end
+
             % Construct the design matrix
             o.DM = designMatrix(o);
 
             % Determine a fluorescence tuning curve (median rate per unique stimulus
             % value)
-             mResponse = mean(o.fluorescence,1,"omitnan"); % Average over time bins
-           
+            mResponse = mean(o.fluorescence,1,"omitnan"); % Average over time bins
+
             isBlank  = isnan(o.stimulus);
             o.blank = median(mResponse(isBlank));
             o.blankErr = diff(prctile(mResponse(isBlank),[25 75]),1);
-            
+
             [o.uStimulus,~,o.stimulusIx] = unique(o.stimulus(~isBlank));
-           
-            o.tuningCurve = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@median);
-            o.tuningCurveErr = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@(x) (diff(prctile(x,[25 75]),1)));
-            
+
+            o.tuningCurve = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@mean)/o.binWidth;
+            o.tuningCurveErr = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@(x) (diff(prctile(x,[25 75]),1)))./o.binWidth;
+
             if isempty(o.tuningFunction)
                 % Because the LL is convex for direct estimation, the
                 % starting guess does not matter.
@@ -352,6 +499,46 @@ classdef poissyFit< matlab.mixin.Copyable
         end
 
 
+        function [inSet,notInSet] = resampleTrials(o,withReplacement,frac)
+            % Resample trials to use in bootstrapping. This resampling
+            % makes sure to resample trials from each of the unique
+            % stimulus conditions so that the resampled trials have all of
+            % the conditions.
+            %
+            % Input
+            % withReplacement - set to true to sample with replacement
+            % (used by bootstrapping).
+            % frac  - The fraction of trials to resample. 1 means resample
+            %           all, 0.5 with replacement=false means split halves.
+            % OUTPUT
+            % inSet - The set of selected trials
+            % outSet - The trials not in the set.
+            %
+            arguments
+                o (1,1) poissyFit
+                withReplacement (1,1) logical = false
+                frac (1,1) double {mustBeInRange(frac,0,1)} =  1
+            end
+            stimCntr= 1;
+            trialsPerStim = cell(1,numel(o.uStimulus));
+            for u= o.uStimulus
+                trialsPerStim{stimCntr} = find(o.stimulus==u);
+                stimCntr = stimCntr+1;
+            end
+            if withReplacement
+                % Sampling with replacement
+                inSet = cellfun(@(x) (x(randi(numel(x),[1 ceil(frac*numel(x))]))),trialsPerStim,'uni',false);
+            else
+                % Sampling without replacement (e.g. to split 80/20 or
+                % split halves)
+                inSet = cellfun(@(x) (x(randperm(numel(x),ceil(frac*numel(x))))),trialsPerStim,'uni',false);
+            end
+            notInSet = cellfun(@(x,y) setxor(x,y),trialsPerStim,inSet,'uni',false);
+            inSet = cat(2,inSet{:});
+            notInSet =cat(2,notInSet{:});
+        end
+
+
         function [ll, derivative, hessian] = logLikelihood(o,parms)
             % Calculates the log likelihood given the data and parameters
             % returns negative of log likelihood, plus the analytic
@@ -367,27 +554,43 @@ classdef poissyFit< matlab.mixin.Copyable
                 otherwise
                     lambda = lambdaFromStimulus(o,parms);
             end
-            lambda = lambda(:,2:end,:);
-            LAMBDA= repmat(lambda,[o.nrSpikesMax+1 1 1]);
+            switch  o.spikeCountDistribution
+                case "POISSON"
+                    % Assume the spike count distribution is poisson (with
+                    % a cut off of o.nrSpikesMax per bin).
+                     lambda = lambda(:,2:end,:);
+                     LAMBDA= repmat(lambda,[o.nrSpikesMax+1 1 1]);         
+                    pX = eps+ exp(-LAMBDA).*LAMBDA.^o.nrSpikesPerTimepoint(:,2:end,:)./o.nrSpikesFactorial(:,2:end,:);
+                    pXY = pX.*o.pFGivenSpikes(:,2:end,:);
+                    sum_PXY = sum(pXY,1); % Sum over nrSpikes
+                    ll = -sum(log(sum_PXY),[2 3]); % Sum over nrTimePoints and nrTrials
 
-            pX = eps+ exp(-LAMBDA).*LAMBDA.^o.nrSpikesPerTimepoint(:,2:end,:)./o.nrSpikesFactorial(:,2:end,:);
-            pXY = pX.*o.pFGivenSpikes(:,2:end,:);
-            sum_PXY = sum(pXY,1); % Sum over nrSpikes
-            ll = -sum(log(sum_PXY),[2 3]); % Sum over nrTimePoints and nrTrials
+                    % Derivatives, if requested and available.
+                    if o.hasDerivatives>0 && nargout>1
+                        sumX_PXY = tensorprod(o.nrSpikes,pXY,1,1);
+                        sumX_PXY_over_sum_PXY = sumX_PXY./sum_PXY;
+                        gamma = sumX_PXY_over_sum_PXY - lambda;
+                        derivative = -tensorprod(dLogLambda,gamma,[2 3],[2 3]);
+                    end
+                    if o.hasDerivatives>1 && nargout>2
+                        % Hessian
+                        c = lambda - tensorprod(o.nrSpikes.^2,pXY./sum_PXY,1,1) + (sumX_PXY_over_sum_PXY).^2;
+                        part1  = tensorprod((c.*dLogLambda),dLogLambda,[2 3],[2 3]);
+                        part2 = - sum(d2LogLambda.*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4]);
+                        hessian = part1 + part2;
+                    end
+                case "EXPONENTIAL"
+                    % Assume the spike "count" distribution is exponential.
+                    k1     = sqrt(0.5*pi).*exp(0.5*(lambda*o.measurementNoise).^2).*erfc((lambda*o.measurementNoise-o.fTilde/o.measurementNoise)/sqrt(2));
+                    z   = exp(-0.5*(o.fTilde/o.measurementNoise).^2+lambda.*o.fTilde);
+                    ll = sum(log(lambda)- lambda.*o.fTilde+ log(k1),[1 2],"omitnan");
+                    if o.hasDerivatives > 0 && nargout >1
+                        dLogLambda.*(1-lambda.*o.fTilde-z.*o.measurementNoise.*lambda./k1 +(lambda*o.measurementNoise).^2);
+                    
 
-            % Derivatives, if requested and available.
-            if o.hasDerivatives>0 && nargout>1
-                sumX_PXY = tensorprod(o.nrSpikes,pXY,1,1);
-                sumX_PXY_over_sum_PXY = sumX_PXY./sum_PXY;
-                gamma = sumX_PXY_over_sum_PXY - lambda;
-                derivative = -tensorprod(dLogLambda,gamma,[2 3],[2 3]);
-            end
-            if o.hasDerivatives>1 && nargout>2
-                % Hessian
-                c = lambda - tensorprod(o.nrSpikes.^2,pXY./sum_PXY,1,1) + (sumX_PXY_over_sum_PXY).^2;
-                part1  = tensorprod((c.*dLogLambda),dLogLambda,[2 3],[2 3]);
-                part2 = - sum(d2LogLambda.*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4]);
-                hessian = part1 + part2;
+                    end
+
+
             end
         end
 
@@ -497,7 +700,7 @@ classdef poissyFit< matlab.mixin.Copyable
             blankInds = isnan(x);
             y(blankInds) = offset;
             firstDerivative(:,blankInds) = 0;
-            
+
         end
 
     end
