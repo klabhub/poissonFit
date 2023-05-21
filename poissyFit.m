@@ -9,7 +9,8 @@ classdef poissyFit< matlab.mixin.Copyable
     % My implementation started from the code provided here:
     % https://github.com/eladganmor/Imaging_Analysis
     % and added some code checking, bootstrapping, code comments, and
-    % additinional functionality to fit double von Mises.
+    % additinional functionality to fit double von Mises, do splithalves
+    % consistency checks and comparison with deconvolved spike estimates.
     %
     % See README.md , demos/parammetric, demos/simple, demos/twoVonMises
     %
@@ -69,6 +70,9 @@ classdef poissyFit< matlab.mixin.Copyable
         % the ML fit, if it is >1 they are the
         % mean of the bootstrap sets (and the error
         % the standard deviation across sets).
+        bootParms               % Estimates for each bootstrap set.
+        bootParmsError           % Estimates for each bootstrap set.
+
         exitFlag                % Exitflag of the optimization routine.
     end
 
@@ -132,7 +136,7 @@ classdef poissyFit< matlab.mixin.Copyable
             elseif ~isempty(pv.hasDerivatives)
                 o.hasDerivatives = pv.hasDerivatives;
             elseif nargout(fun) <0
-                warning('Please set o.hasDerivatives manually for this anonymous tuning function')
+                warning('Please set o.hasDerivatives manually for this (anonymous?) tuning function')
             else
                 o.hasDerivatives  = nargout(fun)-1;
             end
@@ -163,7 +167,7 @@ classdef poissyFit< matlab.mixin.Copyable
             % Given the current parameter estimates, return the underlying lambda
             % (i.e. the poisson rate) for each time bin in the data.
             if isempty(o.tuningFunction)
-                lambda = exp(tensorprod(parms,o.DM,2,1));
+                lambda = squeeze(exp(tensorprod(parms,o.DM,2,1)));
                 dLogLambda = o.DM;
                 d2LogLambda = zeros([numel(parms),numel(parms),o.nrObservations]);
             else
@@ -178,8 +182,7 @@ classdef poissyFit< matlab.mixin.Copyable
                     logLambda = o.tuningFunction(o.stimulus,parms);
                 end
                 lambda = exp(logLambda);
-                lambda=reshape(repmat(lambda,[o.nrTimePoints 1]),[1 o.nrTimePoints o.nrTrials]);
-
+                lambda = repmat(lambda,[o.nrTimePoints 1]);
             end
         end
 
@@ -190,7 +193,7 @@ classdef poissyFit< matlab.mixin.Copyable
             end
             % Plot an overview of the data and tuning curve fits/
             if isempty(o.tuningFunction)
-                predictedTuningCurve= exp(o.parms(2:end) + o.parms(1));
+                predictedTuningCurve= exp(o.parms(2:end));% + o.parms(1));
                 predictedTuningCurveHigh= exp(o.parms(2:end)+o.parmsError(2:end)  + o.parms(1) + o.parmsError(1));
                 predictedTuningCurveLow= exp(o.parms(2:end)-o.parmsError(2:end)  + o.parms(1) - o.parmsError(1));
             else
@@ -356,14 +359,19 @@ classdef poissyFit< matlab.mixin.Copyable
 
 
 
-        function [bootParms,bootParmsError] = solve(o,boot,guess)
-            %[bootParms,bootParmsError] = solve(o,boot,guess)
+        function solve(o,boot,guess)
+            % solve(o,boot,guess)
             % Solve the fitting problem. Optionally do this in bootstrap
-            % resampling fashion
+            % resampling fashion.
             % boot - Number of boostrap sets
             % guess - Optional initial guess of the parameters of the fit.
             %        If left unspecified, it uses a non-parametric estimate
             %        of the tuning cruve.
+            % Each boostrap estimate is stored in bootstrapParms.
+            % If bootstrapping is used, the .parm and .parmError are the
+            % bootstrap estimates, otherwise they are the outcome of the
+            % (single) optimization procedure with errors based on the
+            % Hessian at the solution.
             arguments
                 o (1,1)
                 boot (1,1) double {mustBeInteger,mustBePositive} = 1  % Number of bootstrap sets
@@ -384,25 +392,31 @@ classdef poissyFit< matlab.mixin.Copyable
             iH = diag(inv(hessian));
             iH(iH<0) = NaN; % Negative element means we're not at a (local) minimum. Probably a flat piece of the LL.
             o.parmsError = sqrt(iH)';
+            fixup(o,"SOLVE");
 
             % Perform bootstrap resampling to get a robust estimate of the
             % parms and their errors
             if boot>1
-                bootParms       = nan(boot,numel(o.parms));
-                bootParmsError  = nan(boot,numel(o.parms));
-                parfor (i=2:boot,o.nrWorkers)
+                tmpBootParms = nan(boot,o.nrParms);
+                tmpBootParmsError = nan(boot,o.nrParms);
+                parfor (i=1:boot,o.nrWorkers)
                     thisTrials = resampleTrials(o,true,1);
                     thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);
                     solve(thisO,1,guess);
-                    bootParms(i,:) = thisO.parms;
-                    bootParmsError(i,:) = thisO.parmsError;
+                    tmpBootParms(i,:) = thisO.parms;
+                    tmpBootParmsError(i,:) = thisO.parmsError;
                 end
                 % Store the mean and std across sets as the outcome
-                o.parms      = mean(bootParms,1,'omitnan');
-                o.parmsError = std(bootParms,0,1,'omitnan');
+                o.parms      = mean(tmpBootParms,1,'omitnan');
+                o.parmsError = std(tmpBootParms,0,1,'omitnan');
                 o.bootstrap  = boot;
+                o.bootParms = tmpBootParms;
+                o.bootParmsError = tmpBootParmsError;
+                fixup(o,"BOOTSTRAP");
             else
-                o.bootstrap = 1;
+                o.bootParms = [];
+                o.bootParmsError =[];
+                o.bootstrap = 0;
             end
         end
 
@@ -414,29 +428,32 @@ classdef poissyFit< matlab.mixin.Copyable
     %% Protected, internal functions
     methods  (Access=protected)
         function initialize(o)
-            o.nrSpikes             = (0:o.nrSpikesMax)';
-            o.nrSpikesFactorial    = repmat(factorial(o.nrSpikes),[1 o.nrObservations]);
-            o.nrSpikesPerTimepoint = repmat(o.nrSpikes,[1 o.nrObservations]);
-            % The F is determined  by the previous time bin's F (which decays at a rate of tau)
-            % plus the new F generated by the spikes in the current bin
-            % F is  [nrTimePoints nrTrials] so the first bin cannot really
-            % be used as its preceding bin may not be in the matrix (e.g.
-            % if only a subset of trials is analyzed).
-            F = permute(repmat(o.fluorescence,[1 1 o.nrSpikesMax+1]),[3 1 2]);
+            % Pre-compute some quantities that do not depend on the
+            % estimated parameters to save time during optimization
+            % Becasue the first bin in each trial has no preceding bin,
+            % we cannot estimate lambda in that bin hence these matrices
+            % correspond to timepoint 2 and later.
+            % The logLikelihood computation will combine these
+            % matrix with the lambda estimates from time points 2 and
+            % later.
+
             switch (o.spikeCountDistribution)
                 case "POISSON"
-            fExpected = o.fPerSpike.*o.nrSpikesPerTimepoint(:,2:end,:) + F(:,1:end-1,:).*exp(-o.binWidth/o.tau);
-            % The probability of observing an F given the spikes is a
-            % normal distribution with a stdev equal ot the measuremnt
-            % noise.Adding eps to avoid underflow.
-
-            o.pFGivenSpikes = eps+normpdf(F(:,2:end,:) - fExpected,0,o.measurementNoise);
-            % The first bin has no preceding time bin; set it to NaN.
-            o.pFGivenSpikes = cat(2, nan(o.nrSpikesMax+1, 1,o.nrTrials),o.pFGivenSpikes);
-
+                    o.nrSpikes             = (0:o.nrSpikesMax)';
+                    o.nrSpikesFactorial    = repmat(factorial(o.nrSpikes),[1 o.nrTimePoints-1 o.nrTrials]);
+                    o.nrSpikesPerTimepoint = repmat(o.nrSpikes,[1 o.nrTimePoints-1 o.nrTrials]);
+                    % The F is determined  by the previous time bin's F (which decays at a rate of tau)
+                    % plus the new F generated by the spikes in the current bin
+                    % F is  [nrTimePoints nrTrials].
+                    F = permute(repmat(o.fluorescence,[1 1 o.nrSpikesMax+1]),[3 1 2]);
+                    fExpected = o.fPerSpike.*o.nrSpikesPerTimepoint + F(:,1:end-1,:).*exp(-o.binWidth/o.tau);
+                    % The probability of observing an F given the spikes is a
+                    % normal distribution with a stdev equal ot the measuremnt
+                    % noise. Adding eps to avoid underflow.
+                    o.pFGivenSpikes = eps+normpdf(F(:,2:end,:) - fExpected,0,o.measurementNoise);
                 case "EXPONENTIAL"
-                o.fTilde = cat(1,nan(1,o.nrTrials), 1/o.fPerSpike*(o.fluorescence(1:end-1,:).*exp(-o.binWidth/o.tau)-o.fluorescence(2:end,:)));
-               
+                    o.fTilde =  1/o.fPerSpike*(o.fluorescence(1:end-1,:).*exp(-o.binWidth/o.tau)-o.fluorescence(2:end,:));
+
             end
 
             % Construct the design matrix
@@ -445,36 +462,89 @@ classdef poissyFit< matlab.mixin.Copyable
             % Determine a fluorescence tuning curve (median rate per unique stimulus
             % value)
             mResponse = mean(o.fluorescence,1,"omitnan"); % Average over time bins
-
             isBlank  = isnan(o.stimulus);
             o.blank = median(mResponse(isBlank));
             o.blankErr = diff(prctile(mResponse(isBlank),[25 75]),1);
-
             [o.uStimulus,~,o.stimulusIx] = unique(o.stimulus(~isBlank));
-
             o.tuningCurve = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@mean)/o.binWidth;
             o.tuningCurveErr = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@(x) (diff(prctile(x,[25 75]),1)))./o.binWidth;
+            
 
-            if isempty(o.tuningFunction)
-                % Because the LL is convex for direct estimation, the
-                % starting guess does not matter.
-                % 0 baseline, median(F)/FPerSpike
-                o.bestGuess = zeros(1,size(o.DM,1));
-            elseif contains((func2str(o.tuningFunction)),'logVonMises')
-                % Start at what looks like the preferred
-                % orientation.
-                [~,prefIx] = max(o.tuningCurve);
-                o.bestGuess = [0 o.uStimulus(prefIx) 1];
-            elseif contains((func2str(o.tuningFunction)),'logTwoVonMises')
-                % Start at what looks like the preferred
-                % orientation.
-                [~,prefIx] = max(o.tuningCurve);
-                o.bestGuess = [0 o.uStimulus(prefIx) 0 0 0];
-            else
-                o.bestGuess = [];
-            end
+            fixup(o,"BESTGUESS");
         end
 
+
+        function fixup(o,what)
+            % Various fixups needed for tuningFunctions. All put in one
+            % place to make future additions of additional tuningFunctions
+            % a bit easier
+            arguments
+                o (1,1) poissyFit
+                what (1,1) string {mustBeMember(what,["BESTGUESS","SOLVE","BOOTSTRAP"])}
+            end
+
+            switch (what)
+                case "BESTGUESS"
+                    if isempty(o.tuningFunction)
+                        % Because the LL is convex for direct estimation, the
+                        % starting guess does not matter.
+                        % 0 baseline, median(F)/FPerSpike
+                        o.bestGuess = zeros(1,size(o.DM,1));
+                    elseif contains((func2str(o.tuningFunction)),'logVonMises')
+                        % Start at what looks like the preferred
+                        % orientation.
+                        [~,prefIx] = max(o.tuningCurve);
+                        o.bestGuess = [0 o.uStimulus(prefIx) 1];
+                    elseif contains((func2str(o.tuningFunction)),'logTwoVonMises')
+                        % Start at what looks like the preferred
+                        % orientation.
+                        [~,prefIx] = max(o.tuningCurve);
+                        o.bestGuess = [0 o.uStimulus(prefIx) 0 0 0];
+                    else
+                        errror('PLease add a %s initialization in poissyFit/fixup',what);
+                    end
+
+                case "SOLVE"
+                    % Post processing for consistent parameter interpretation
+                    if isempty(o.tuningFunction)
+                        % Nothing to do
+                    elseif contains((func2str(o.tuningFunction)),'logVonMises')
+
+                    elseif contains((func2str(o.tuningFunction)),'logTwoVonMises')
+                        if o.parms(5)>o.parms(4)
+                            % Either amp1 or amp2 could be the preferred direction. For consistency
+                            % make sure amp1 is the largest one and flip
+                            % preferred/anti-preferred if needed
+                            o.parms = o.parms([1 2 3 5 4]);
+                            o.parms(2) = mod(o.parms(2)+180,360); % Swapping preferred and anti-preferred
+                        else
+                            o.parms(2) = mod(o.parms(2),360);% Convenience
+                        end
+                    else
+                        errror('PLease add a %s initialization in poissyFit/fixup',what);
+                    end
+                case 'BOOTSTRAP'
+                    % Determine errors from bootstrap parms
+                    if isempty(o.tuningFunction)
+                        % Nothing to do
+                    elseif contains((func2str(o.tuningFunction)),'logVonMises')
+
+                    elseif contains((func2str(o.tuningFunction)),'logTwoVonMises')
+                        % Determine mean angle and circular standard deviation
+                        % Doubling the angles to only look at circular variance
+                        % around the orientation axis. (Otherwise an
+                        % orientation tuned neuron will show large variance
+                        % becasue on some bootstrap sets phi is preferred and
+                        % others it is phi+180).
+                        z = exp(2*pi/180*1i*o.bootParms(:,2));
+                        R = mean(z);
+                        o.parmsError(2) = 180/pi*sqrt(-2*log(abs(R))); % Circular standard deviation
+                        o.parms(2) = mod(180/pi*angle(R),360);
+                    else
+                        errror('PLease add a %s initialization in poissyFit/fixup',what);
+                    end
+            end
+        end
 
         function DM = designMatrix(o)
             % Given a row vector of stimulus values (e.g. orientation per
@@ -546,11 +616,8 @@ classdef poissyFit< matlab.mixin.Copyable
             switch o.hasDerivatives
                 case 2
                     [lambda,dLogLambda,d2LogLambda] = lambdaFromStimulus(o,parms);
-                    dLogLambda = dLogLambda(:,2:end,:);
-                    d2LogLambda= d2LogLambda(:,:,2:end,:);
                 case 1
                     [lambda,dLogLambda] = lambdaFromStimulus(o,parms);
-                    dLogLambda = dLogLambda(:,2:end,:);
                 otherwise
                     lambda = lambdaFromStimulus(o,parms);
             end
@@ -558,10 +625,10 @@ classdef poissyFit< matlab.mixin.Copyable
                 case "POISSON"
                     % Assume the spike count distribution is poisson (with
                     % a cut off of o.nrSpikesMax per bin).
-                     lambda = lambda(:,2:end,:);
-                     LAMBDA= repmat(lambda,[o.nrSpikesMax+1 1 1]);         
-                    pX = eps+ exp(-LAMBDA).*LAMBDA.^o.nrSpikesPerTimepoint(:,2:end,:)./o.nrSpikesFactorial(:,2:end,:);
-                    pXY = pX.*o.pFGivenSpikes(:,2:end,:);
+                    lambda =reshape(lambda(2:end,:),[1 o.nrTimePoints-1 o.nrTrials]);
+                    LAMBDA= repmat(lambda,[o.nrSpikesMax+1 1 1]);
+                    pX = eps+ exp(-LAMBDA).*LAMBDA.^o.nrSpikesPerTimepoint./o.nrSpikesFactorial;
+                    pXY = pX.*o.pFGivenSpikes;
                     sum_PXY = sum(pXY,1); % Sum over nrSpikes
                     ll = -sum(log(sum_PXY),[2 3]); % Sum over nrTimePoints and nrTrials
 
@@ -570,27 +637,44 @@ classdef poissyFit< matlab.mixin.Copyable
                         sumX_PXY = tensorprod(o.nrSpikes,pXY,1,1);
                         sumX_PXY_over_sum_PXY = sumX_PXY./sum_PXY;
                         gamma = sumX_PXY_over_sum_PXY - lambda;
-                        derivative = -tensorprod(dLogLambda,gamma,[2 3],[2 3]);
+                        derivative = -tensorprod(dLogLambda(:,2:end,:),gamma,[2 3],[2 3]);
                     end
                     if o.hasDerivatives>1 && nargout>2
                         % Hessian
-                        c = lambda - tensorprod(o.nrSpikes.^2,pXY./sum_PXY,1,1) + (sumX_PXY_over_sum_PXY).^2;
-                        part1  = tensorprod((c.*dLogLambda),dLogLambda,[2 3],[2 3]);
-                        part2 = - sum(d2LogLambda.*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4]);
+                        c = lambda- tensorprod(o.nrSpikes.^2,pXY./sum_PXY,1,1) + (sumX_PXY_over_sum_PXY).^2;
+                        part1  = tensorprod((c.*dLogLambda(:,2:end,:)),dLogLambda(:,2:end,:),[2 3],[2 3]);
+                        part2 = - sum(d2LogLambda(:,:,2:end,:).*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4]);
                         hessian = part1 + part2;
                     end
                 case "EXPONENTIAL"
-                    % Assume the spike "count" distribution is exponential.
-                    k1     = sqrt(0.5*pi).*exp(0.5*(lambda*o.measurementNoise).^2).*erfc((lambda*o.measurementNoise-o.fTilde/o.measurementNoise)/sqrt(2));
-                    z   = exp(-0.5*(o.fTilde/o.measurementNoise).^2+lambda.*o.fTilde);
-                    ll = sum(log(lambda)- lambda.*o.fTilde+ log(k1),[1 2],"omitnan");
+                    % Assume the spike "count" distribution is
+                    % exponential. With that the sum over spike counts can
+                    % be done as an integral worked out analytically. (See
+                    % appendix in Gammor et al.
+                    lambda = lambda(2:end,:); % Only timebins 2 and later can be used.
+                    % Variable naming follows the notation in Gammor et al.
+                    % Need to add eps to avoid infs in the logs.
+                    lfTilde = lambda.*o.fTilde ; % Used a few times
+                    k1  = sqrt(0.5*pi).*exp(0.5*(lambda*o.measurementNoise).^2).*erfc((lambda*o.measurementNoise-o.fTilde/o.measurementNoise)/sqrt(2));
+                    z   = exp(-0.5*(o.fTilde/o.measurementNoise).^2+lfTilde);
+
+                    ll = -(sum(log(lambda+eps)- lfTilde+ log(k1+eps),[1 2],"omitnan"));
                     if o.hasDerivatives > 0 && nargout >1
-                        dLogLambda.*(1-lambda.*o.fTilde-z.*o.measurementNoise.*lambda./k1 +(lambda*o.measurementNoise).^2);
-                    
-
+                        gamma =  (1-lfTilde-o.measurementNoise.*z.*lambda./k1 +(lambda*o.measurementNoise).^2);
+                        derivative = -tensorprod(dLogLambda(:,2:end,:),gamma,[2 3],[1 2]);
                     end
-
-
+                    if o.hasDerivatives>1 && nargout>2
+                        % Hessian
+                        A = -lfTilde+ 2*o.measurementNoise*lambda.^2-o.measurementNoise*z.*lambda./k1.*(lfTilde+o.measurementNoise*lambda.*(z./k1 -o.measurementNoise*lambda)+1);
+                        A  = repmat(reshape(A,[1 o.nrTimePoints-1 o.nrTrials]),[o.nrParms 1 1]);
+                        B= (1-lfTilde- o.measurementNoise*z.*lambda./k1 + (o.measurementNoise*lambda).^2);
+                        part1 = tensorprod(A.*dLogLambda(:,2:end,:),dLogLambda(:,2:end,:),[2 3],[2 3]);
+                        part2 = tensorprod(d2LogLambda(:,:,2:end,:),B,[3 4],[1 2]);
+                        hessian  = (part1 +  part2);
+                    end
+                    %                     if isnan(ll) || isinf(ll) || any(isnan(derivative))
+                    %                         1;
+                    %                     end
             end
         end
 
