@@ -12,9 +12,9 @@ This Matlab code estimates the Poisson firing rate that underlies measured fluor
   2. Each spike produces a fixed amount of extra fluorescence (fPerSpike) and this decays exponentially over time (tau).
   3. The fluorescence is corrupted with additive Gaussian noise.
 
-If these assumptions are met, this code will estimate a tuning curve (rate as a function of a set of conditions in an experiment)  better than the standard sequential approach in whcih  spike deconvolution is used to estimate spike times/counts, and then a tuning curve is estimated from these spike count estimates.  
+If these assumptions are met, this code will estimate a tuning curve (rate as a function of a set of conditions in an experiment)  better than the standard sequential approach in which  spike deconvolution is used to estimate spike times/counts, and then a tuning curve is estimated from these spike count estimates.  
   
-  My implementation borrows heavily from the code provided at  https://github.com/eladganmor/Imaging_Analysis. I primarily added code comments, added optimization parameters, bootstrapping.
+  My implementation borrows heavily from the code at  https://github.com/eladganmor/Imaging_Analysis. I primarily added code comments, added optimization parameters, bootstrapping.
   
   
   Bart Krekelberg  - May 2023.
@@ -25,9 +25,15 @@ If these assumptions are met, this code will estimate a tuning curve (rate as a 
   ```addpath('c:\github\poissyFit')```. 
   Then check out the demos folder:
   
+  ***Analysis of Simulated Data***:
+ 
   1. demos/simple.m : non-parametric Poisson rate estimation
   2. demos/parametric.m : parametric tuning curve estimation (von Mises)
   3. demons/twoVonMises.m :  tuning curve estimation (two von Mises functions)
+
+***Analysis of Experimental Data***
+
+  1.demos/directionTuning.m
 
   
   
