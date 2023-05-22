@@ -293,8 +293,8 @@ classdef poissyFit< matlab.mixin.Copyable
                 rCross = nan(nrBoot,1);
             end
             % Bootstrap fitting on split halves
-            %parfor (i=1:nrBoot, o.nrWorkers)
-            for i=1:nrBoot % Uncomment for debugging
+            parfor (i=1:nrBoot, o.nrWorkers)
+            %for i=1:nrBoot % Uncomment for debugging
                 [oneHalfTrials,otherHalfTrials] =resampleTrials(o,false,0.5) ;
                 thisO = o.copyWithNewData(o.stimulus(:,oneHalfTrials),o.fluorescence(:,oneHalfTrials),o.binWidth,o.tuningFunction);
                 solve(thisO,1,guess);
@@ -357,6 +357,27 @@ classdef poissyFit< matlab.mixin.Copyable
 
         end
 
+        function v = estimateNoise(o)
+            % This estimates the noise in the fluorescence measurements by
+            % finding timepoints that are identical and have an identical previous timepoint
+            % , then determining the std across those identical repeats ,
+            % and then the mean across those std over conditions.
+            % This is an estimate of the noise introduced by the Poisson
+            % nature of the spiking plus the measurement noise. So it
+            % cannot simply be used as the measurement noise, but it may
+            % help to determine whether some independent measure for
+            % measurement noise is reasonable. 
+           
+            state = cat(1,o.DM(:,2:end,:),o.DM(:,1:end-1,:));
+            state = reshape(state,size(o.DM,1)*2,(o.nrTimePoints-1)*o.nrTrials)';
+            [~,~,ix] = unique(state,'rows');
+            f = o.fluorescence(2:end,:);
+            nrSpk = f./o.fPerSpike;
+            % meanPerState = accumarray(ix,nrSpk(:)',[],@mean);
+            stdPerState = accumarray(ix,nrSpk(:)',[],@std);
+            v  = mean(stdPerState);
+
+        end
 
 
         function solve(o,boot,guess)
