@@ -285,7 +285,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 oSpk = o.copyWithNewData(o.stimulus,spikes,o.binWidth,o.tuningFunction);
                 oSpk.tau =0;
                 oSpk.fPerSpike =1;
-                oSpk.measurementNoise = mean(spikes,'all','omitnan')./mean(o.fluorescence,'all','omitnan').*o.measurementNoise;
+                %oSpk.measurementNoise = mean(spikes,'all','omitnan')./mean(o.fluorescence,'all','omitnan').*o.measurementNoise;
                 % Preallocate
                 spikeBootParmsOne = nan(o.nrParms,nrBoot);
                 spikeBootParmsOther= nan(o.nrParms,nrBoot);
