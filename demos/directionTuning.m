@@ -20,7 +20,7 @@ roi = sbx.Roi & 'session_date = ''2023-03-23''' & 'pcell>0.95';
 expt = ns.Experiment & 'session_date = ''2023-03-23''' & 'paradigm like ''Ori%''' & 'starttime=''12:56:11''';
 stepSize = 1/15.5;
 trialsToKeep =2:120; % The first trial has some nan in it at the start.
-nrRois = 100;
+nrRois = 1000;
 fetchOptions = ['ORDER BY pCell Desc LIMIT ' num2str(nrRois)] ; % Take the top nrRois neurons
 [f] = get(roi ,expt, trial= trialsToKeep, modality = 'fluorescence',start=0.5,stop=1.5,step=stepSize,interpolation ='nearest',fetchOptions = fetchOptions);
 [np] = get(roi ,expt,trial= trialsToKeep,  modality = 'neuropil',start=0.5,stop=1.5,step=stepSize,interpolation ='nearest',fetchOptions = fetchOptions);
