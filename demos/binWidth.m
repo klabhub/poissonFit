@@ -17,9 +17,8 @@ parmsError=nan(nrRois,nrBinWidths,5);
 % For each ROI, fit a logTwoVonMises, bootstrap the parameter estimates and
 % determined the splitHalves correlation.
 nrBoot = 100;
-nrWorkers = 8 ; % Parfor for bootstrapping
+nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
 spikeCountDist = "POISSON";
-
 for j = 1:nrBinWidths
     thisTimes =seconds(0.5:stepSize*binWidthFactor(j):1.5);
     thisF = retime(f,thisTimes,'linear');
@@ -30,16 +29,18 @@ for j = 1:nrBinWidths
     thisF = thisF - 0.7*thisNP;
     thisSpk = retime(spk,thisTimes,'linear');
     thisSpk= permute(double(reshape(thisSpk.Variables,[nrTimePoints nrRois nrTrials])),[1 3 2]);
-    for roi =1:10 
+    for roi =1:nrRois 
         fprintf('BinWidth #%d ROI #%d (%s)\n',j,roi,datetime('now'))
 
         o = poissyFit(direction,thisF(:,:,roi),stepSize*binWidthFactor(j),@poissyFit.logTwoVonMises);
-        o.spikeCountDistribution = spikeCountDist;
+        o.spikeCountDistribution = spikeCountDist;        
+        
         switch spikeCountDist
             case "POISSON"
                 o.hasDerivatives = 1;
                 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
                     'SpecifyObjectiveGradient',true, ...
+                    'HessianFcn','objective', ...
                     'display','none', ...
                     'CheckGradients',false, ... % Set to true to check supplied gradients against finite differences
                     'diagnostics','off');
