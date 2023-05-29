@@ -47,6 +47,7 @@ spk= permute(double(reshape(spk.Variables,[nrTimePoints nrRois nrTrials])),[1 3 
 
 %% Initialize
 nrRois  = size(F,3);
+nrRois = 10;
 r       = nan(nrRois,1);
 rSpk    = nan(nrRois,1);
 rCross  = nan(nrRois,1);
@@ -58,7 +59,7 @@ parmsError=nan(nrRois,5);
 % determined the splitHalves correlation.
 nrBoot = 100;
 nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
-spikeCountDist = "EXPONENTIAL";
+spikeCountDist = "POISSON";
 for roi =1:nrRois
     fprintf('ROI #%d (%s)\n',roi,datetime('now'))
     o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises);

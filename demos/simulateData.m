@@ -4,10 +4,10 @@
 oriPerTrial      = 0:30:330;  % These are the orientations in the experiment
 nrRepeats        =  12;    % Each orientation is shown this many times
 nrTimePoints     = 10;      % 10 "bins" in each trial
-dt               = 0.1;     % One bin is 100 ms.
-tau              = .5;      % Fluorescence indicator decay
+dt               = 0.25;     % One bin is 100 ms.
+tau              = 1.5;      % Fluorescence indicator decay
 fPerSpike        = 50;      % Ca/Fluorescence per spike
-measurementNoise = 5;  % Stdev of the noise
+measurementNoise = 15;  % Stdev of the noise
 tuningParms      = [0 90 0]; % Offset Preferred log(Kappa)
 % Use the built-in von Mises function, periodic over 180 (i.e. orientation not direction).
 tc               = @(x,parms)  poissyFit.logVonMises(x,parms,180);
