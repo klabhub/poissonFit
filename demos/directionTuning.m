@@ -38,7 +38,8 @@ thisTimes =seconds(0.5:stepSize:1.5);
 f = retime(f,thisTimes,'linear');
 [nrTimePoints, nrTrials] = size(f);
 f = permute(double(reshape(f.Variables,[nrTimePoints nrRois nrTrials])),[1 3 2]);
-np = retime(f,thisTimes,'linear');
+np = retime(np,thisTimes,'linear');
+np = permute(double(reshape(np.Variables,[nrTimePoints nrRois nrTrials])),[1 3 2]);
 F  = f-0.7*np;
 spk = retime(spk,thisTimes,'linear');
 spk= permute(double(reshape(spk.Variables,[nrTimePoints nrRois nrTrials])),[1 3 2]);
@@ -55,12 +56,12 @@ parmsError=nan(nrRois,5);
 %% FIT
 % For each ROI, fit a logTwoVonMises, bootstrap the parameter estimates and
 % determined the splitHalves correlation.
-nrBoot = 1;
-nrWorkers = 8 ; % Parfor for bootstrapping
-spikeCountDist = "POISSON";
+nrBoot = 100;
+nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
+spikeCountDist = "EXPONENTIAL";
 for roi =1:nrRois
     fprintf('ROI #%d (%s)\n',roi,datetime('now'))
-    o = poissyFit(direction,F(:,:,roi),binWidth,@poissyFit.logTwoVonMises);
+    o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises);
     o.spikeCountDistribution = spikeCountDist;
     switch spikeCountDist
         case "POISSON"
@@ -107,9 +108,9 @@ ylabel 'stdev (deg)'
 hold on
 plot(xlim,[20 20])
 
-subplot(2,2,2)
+subplot(2,2,3)
 scatter(rSpk,parmsError(:,2),'.')
-xlabel '\sigma_F'
+xlabel '\sigma_{spk}'
 ylabel 'stdev (deg)'
 hold on
 plot(xlim,[20 20])

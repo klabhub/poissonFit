@@ -263,20 +263,20 @@ classdef poissyFit< matlab.mixin.Copyable
             % matrix [nrTimePoints nrTrials] used by poissyFit.
             %
 
-            arguments (Input)
+            arguments 
                 o (1,1) poissyFit
                 nrBoot  (1,1) double {mustBeInteger,mustBePositive}  =250  % The number of randomly sampled split halves to use
                 guess = []  % The initial guess for parameter estimation ([] uses the internal guess).
                 spikes (:,:) double = [];
                 pv.corrFun = @(x,y)corr(x,y,'Type','Spearman')
             end
-            arguments (Output)
-                r (1,1) double  % Mean of the split-half correlation acros bootstrap sets
-                bootParms double  % Parameter estimates in each bootstrap set
-                rSpikes (1,1) double  % Mean of the split-half correlation in the deconvolved spikes
-                spikeBootParms double % Parameter estimates based one the spikes in each bootstrap set
-                rCross (1,1) double % Mean of the correlation between fluorescence and spike estimates
-            end
+%             arguments (Output)
+%                 r (1,1) double  % Mean of the split-half correlation acros bootstrap sets
+%                 bootParms double  % Parameter estimates in each bootstrap set
+%                 rSpikes (1,1) double  % Mean of the split-half correlation in the deconvolved spikes
+%                 spikeBootParms double % Parameter estimates based one the spikes in each bootstrap set
+%                 rCross (1,1) double % Mean of the correlation between fluorescence and spike estimates
+%             end
             initialize(o);
             % Avoid warnings on display during bootstrapping
             o.options.Display = 'off';
@@ -795,14 +795,14 @@ classdef poissyFit< matlab.mixin.Copyable
             %
             % SEE demos/twoVonMises for an example usage.
 
-            arguments (Input)
+            arguments 
                 x (:,:) double
                 parms (1,5) double
             end
-            arguments (Output)
-                y (1,:) double
-                firstDerivative (5,:) double
-            end
+%             arguments (Output)
+%                 y (1,:) double
+%                 firstDerivative (5,:) double
+%             end
             offset = exp(parms(1)); preferred = parms(2); kappa = exp(parms(3));amp1=exp(parms(4)); amp2=exp(parms(5));
             deg2rad =pi/180;
             term1 = amp1*exp(kappa*cos(deg2rad*(x-preferred)));
