@@ -62,7 +62,7 @@ classdef poissyFit< matlab.mixin.Copyable
         bestGuess               % Initial guess of the parameters (from nonparametric tuning)
         blank                   % Response to blank (coded as NaN in the stimulus)
         blankErr                %
-
+        gof                     % Goodness of fit (Spearman correlation of the estimate with the nonparameteric tuning curve)
         parms                   % Estimated parameters that capture the fluorescence best
         parmsError              % Errors on the parameter estimates.
         bootstrap               % Number of bootstrap sets used to estimate parms/parmsError.
@@ -72,6 +72,7 @@ classdef poissyFit< matlab.mixin.Copyable
         % the standard deviation across sets).
         bootParms               % Estimates for each bootstrap set.
         bootParmsError           % Estimates for each bootstrap set.
+        bootGof                   % Estimates for each bootstrap set.
 
         exitFlag                % Exitflag of the optimization routine.
     end
@@ -217,14 +218,13 @@ classdef poissyFit< matlab.mixin.Copyable
             end
             if pv.showBootstrapSets
                 if isempty(o.tuningFunction)
-                    bsPredictedTuningCurve= exp(o.booParms(:,2:end));% + o.parms(1));                
+                    bsPredictedTuningCurve= exp(o.bootParms(:,2:end));% + o.parms(1));                
                 else
                     for i=1:o.bootstrap
-                    bsPredictedTuningCurve(i,:) = exp(o.tuningFunction(o.uStimulus,o.bootParms(i,:)));
-                    end
-                plot(o.uStimulus,1./o.binWidth*bsPredictedTuningCurve','Color',[0.8 0.8 0.8])
-            end
-                               
+                        bsPredictedTuningCurve(i,:) = exp(o.tuningFunction(o.uStimulus,o.bootParms(i,:)))';
+                    end                
+                end
+                plot(o.uStimulus,1./o.binWidth*bsPredictedTuningCurve,'Color',[0.8 0.8 0.8])               
             end
             ylabel 'Lambda (spk/s)'
             xlabel 'Stimulus'
@@ -424,32 +424,45 @@ classdef poissyFit< matlab.mixin.Copyable
             if isempty(guess)
                 guess  = o.bestGuess;
             end
-            % Solve the minimization problem.
-            [o.parms,o.exitFlag,~,~,~,hessian] = fminunc(@o.logLikelihood,guess,o.options);
-            iH = diag(inv(hessian));
-            iH(iH<0) = NaN; % Negative element means we're not at a (local) minimum. Probably a flat piece of the LL.
-            o.parmsError = sqrt(iH)';
+            % Solve the  minimization problem.
+            [o.parms,ll,o.exitFlag,output,derivative,hessian] = fminunc(@o.logLikelihood,guess,o.options); %#ok<ASGLU> 
+            % The Hessian is usually not very informative.
+             iH = diag(inv(hessian));
+             iH(iH<0) = NaN; % Negative element means we're not at a (local) minimum. Probably a flat piece of the LL.
+             o.parmsError = sqrt(iH)';           
             fixup(o,"SOLVE");
+            if isempty(o.tuningFunction)
+                % Ignore the grand mean, correlate the rest
+                o.gof = corr(o.parms(2:end),o.tuningCurve,'type','Spearman');                    
+            else
+                % Predict the tuning 
+                tc= o.tuningFunction(o.uStimulus,o.parms)';
+                o.gof = corr(tc,o.tuningCurve,'type','Spearman');
+            end
 
             % Perform bootstrap resampling to get a robust estimate of the
             % parms and their errors
             if boot>1
                 tmpBootParms = nan(boot,o.nrParms);
                 tmpBootParmsError = nan(boot,o.nrParms);
+                tmpBootGof = nan(boot,1);
                 parfor (i=1:boot,o.nrWorkers)
+                    %for i=1:boot % For debugging
                     thisTrials = resampleTrials(o,true,1);
-                    thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);
-                     guess = [0 o.uStimulus(randi(numel(o.uStimulus))) 0 0 0];
+                    thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);                   
                     solve(thisO,1,guess);
                     tmpBootParms(i,:) = thisO.parms;
                     tmpBootParmsError(i,:) = thisO.parmsError;
+                    tmpBootGof(i) = thisO.gof;
                 end
                 % Store the mean and std across sets as the outcome
                 o.parms      = mean(tmpBootParms,1,'omitnan');
                 o.parmsError = std(tmpBootParms,0,1,'omitnan');
+                o.gof = mean(tmpBootGof,1,"omitnan");
                 o.bootstrap  = boot;
                 o.bootParms = tmpBootParms;
                 o.bootParmsError = tmpBootParmsError;
+                o.bootGof = tmpBootGof;
                 fixup(o,"BOOTSTRAP");
             else
                 o.bootParms = [];
@@ -681,7 +694,7 @@ classdef poissyFit< matlab.mixin.Copyable
                         % Hessian
                         c = lambda- tensorprod(o.nrSpikes.^2,pXY./sum_PXY,1,1) + (sumX_PXY_over_sum_PXY).^2;
                         part1  = tensorprod((c.*dLogLambda(:,2:end,:)),dLogLambda(:,2:end,:),[2 3],[2 3]);
-                        part2 = - sum(d2LogLambda(:,:,2:end,:).*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4]);
+                        part2 = -sum(d2LogLambda(:,:,2:end,:).*reshape(gamma,1,1,o.nrTimePoints-1,o.nrTrials),[3,4]);
                         hessian = part1 + part2;
                     end
                 case "EXPONENTIAL"

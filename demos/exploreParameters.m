@@ -15,13 +15,13 @@ load ../data/exampleData.mat
 nrBoot = 100;  % Nr Bootstrap sets used to estimate circular standard deviation as well as split halves.
 nrWorkers = 8; % Parfor for bootstrapping
 spikeCountDist = "POISSON"; % POISSON or EXPONENTIAL
-nrRoisToRun = 20;    % Of the 1000 roi in the file, run the first n.
-parm = 'tau';     % Which parameter should be varied (others get the default value)
+nrRoisToRun = 10;    % Of the 1000 roi in the file, run the first n.
+parm = 'nothing';     % Which parameter should be varied (others get the default value)
 defaultTau = 1.3;   % Default calcium decay tau (Gcamp6s)
 defaultBin = 1/15.5; % Default bin size (framerate of acquisition)
 defaultNoiseFactor = 1; % Default noise factor (the suite2p estimate of the noise is multiplied by this).
 fun = @poissyFit.logTwoVonMises;
-
+nrDerivatives = 1;
 % Determine the range of the varied parameter
 switch (parm)
     case 'tau'
@@ -34,7 +34,8 @@ switch (parm)
         prms = [0.1 0.5 1 2 5 10];
         prmLabel =  'noise factor ';
     otherwise
-        error('Unknown parm')
+        %% all defaults
+        prms = 1;
 end
 
 % Preallocate
@@ -44,12 +45,13 @@ rSpk    = nan(nrRois,nrPrms);
 rCross  = nan(nrRois,nrPrms);
 parms  = nan(nrRois,nrPrms,5);
 parmsError=nan(nrRois,nrPrms,5);
+gof         =nan(nrRois,nrPrms);
 
 %% FIT
 % For each ROI, fit a logTwoVonMises, bootstrap the parameter estimates and
 % determined the splitHalves correlation.
 
-for j = 1:nrPrms
+for prmCntr = 1:nrPrms
     % Set defaults
     thisTau =defaultTau;
     thisBin = defaultBin;
@@ -57,13 +59,13 @@ for j = 1:nrPrms
     %Overrule the parameter that is being varied
     switch (parm)
         case 'tau'
-            thisTau = prms(j);
+            thisTau = prms(prmCntr);
         case 'binwidth'
-            thisBin =prms(j);
+            thisBin =prms(prmCntr);
         case 'noise'
-            thisNoiseFactor =prms(j);
+            thisNoiseFactor =prms(prmCntr);
         otherwise
-            error('Unknown parm')
+            % all defaults
     end
 
     % Extrac the neuropil corrected fluorescence and deconvolved spikes at
@@ -78,15 +80,15 @@ for j = 1:nrPrms
     thisSpk = retime(spk,thisTimes,'linear');
     thisSpk= permute(double(reshape(thisSpk.Variables,[nrTimePoints nrRois nrTrials])),[1 3 2]);
     for roi =1:nrRoisToRun
-        fprintf('Parm #%d ROI #%d (%s)\n',j,roi,datetime('now'))
+        fprintf('Parm #%d ROI #%d (%s)\n',prmCntr,roi,datetime('now'))
         o = poissyFit(direction,thisF(:,:,roi),thisBin,fun);
         o.spikeCountDistribution = spikeCountDist;
         o.tau = thisTau;
         switch spikeCountDist
             case "POISSON"
-                o.hasDerivatives = 1;
+                o.hasDerivatives = nrDerivatives;                
                 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
-                    'SpecifyObjectiveGradient',true, ...
+                    'SpecifyObjectiveGradient',true, ...                    
                     'display','none', ...
                     'CheckGradients',false, ... % Set to true to check supplied gradients against finite differences
                     'diagnostics','off');
@@ -102,24 +104,17 @@ for j = 1:nrPrms
         try
             solve(o,nrBoot); % Bootstrap the results
             % Store
-            parms(roi,j,:) =o.parms;
-            parmsError(roi,j,:)= o.parmsError;
-
-%             oSpk = o.copyWithNewData(o.stimulus,thisSpk(:,:,roi),o.binWidth,o.tuningFunction);
-%             oSpk.tau =0;
-%             oSpk.fPerSpike =1;
-%             oSpk.measurementNoise = mean(oSpk.tuningCurveErr)./mean(o.tuningCurveErr).*o.measurementNoise;
-%             solve(oSpk,nrBoot)
-%             
-
+            parms(roi,prmCntr,:) =o.parms;
+            parmsError(roi,prmCntr,:)= o.parmsError;
+            gof(roi,prmCntr) = o.gof;
 
             % Bootstrap the splitHalves correlation
-            [r(roi,j),~,rSpk(roi,j),~,rCross(roi,j)] = splitHalves(o,nrBoot,[],thisSpk(:,:,roi));
+            [r(roi,prmCntr),~,rSpk(roi,prmCntr),~,rCross(roi,prmCntr)] = splitHalves(o,nrBoot,[],thisSpk(:,:,roi));
 
 
             
         catch me
-            fprintf(2,'Failed on %d\n',roi)
+            fprintf(2,'Failed on %d  (%s)\n',roi,me.message)
         end
     end
 end
