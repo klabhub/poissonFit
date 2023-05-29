@@ -190,6 +190,7 @@ classdef poissyFit< matlab.mixin.Copyable
             arguments
                 o (1,1) poissyFit
                 pv.showErrorbars  = false
+                pv.showBootstrapSets = false
             end
             % Plot an overview of the data and tuning curve fits/
             if isempty(o.tuningFunction)
@@ -214,6 +215,17 @@ classdef poissyFit< matlab.mixin.Copyable
             else
                 h2= plot(o.uStimulus,1./o.binWidth*predictedTuningCurve,'r');
             end
+            if pv.showBootstrapSets
+                if isempty(o.tuningFunction)
+                    bsPredictedTuningCurve= exp(o.booParms(:,2:end));% + o.parms(1));                
+                else
+                    for i=1:o.bootstrap
+                    bsPredictedTuningCurve(i,:) = exp(o.tuningFunction(o.uStimulus,o.bootParms(i,:)));
+                    end
+                plot(o.uStimulus,1./o.binWidth*bsPredictedTuningCurve','Color',[0.8 0.8 0.8])
+            end
+                               
+            end
             ylabel 'Lambda (spk/s)'
             xlabel 'Stimulus'
             title (['Parms: ' num2str(o.parms,2)])
@@ -223,7 +235,7 @@ classdef poissyFit< matlab.mixin.Copyable
 
 
 
-        function [r,bootParms,rSpikes,spikeBootParms,rCross] = splitHalves(o,nrBoot,guess,spikes)
+        function [r,bootParms,rSpikes,spikeBootParms,rCross] = splitHalves(o,nrBoot,guess,spikes,pv)
             % Asess performance by comparing parameter estimates based on
             % split halves of the data.
             %
@@ -256,6 +268,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 nrBoot  (1,1) double {mustBeInteger,mustBePositive}  =250  % The number of randomly sampled split halves to use
                 guess = []  % The initial guess for parameter estimation ([] uses the internal guess).
                 spikes (:,:) double = [];
+                pv.corrFun = @(x,y)corr(x,y,'Type','Spearman')
             end
             arguments (Output)
                 r (1,1) double  % Mean of the split-half correlation acros bootstrap sets
@@ -285,7 +298,9 @@ classdef poissyFit< matlab.mixin.Copyable
                 oSpk = o.copyWithNewData(o.stimulus,spikes,o.binWidth,o.tuningFunction);
                 oSpk.tau =0;
                 oSpk.fPerSpike =1;
-                %oSpk.measurementNoise = mean(spikes,'all','omitnan')./mean(o.fluorescence,'all','omitnan').*o.measurementNoise;
+                % Scale the measurement noise by the nonparametric estimate
+                % of the noise in the tuning curves
+                oSpk.measurementNoise = mean(oSpk.tuningCurveErr)./mean(o.tuningCurveErr).*o.measurementNoise;
                 % Preallocate
                 spikeBootParmsOne = nan(o.nrParms,nrBoot);
                 spikeBootParmsOther= nan(o.nrParms,nrBoot);
@@ -320,13 +335,14 @@ classdef poissyFit< matlab.mixin.Copyable
 
 
             %% Determime correlations
+            
             for i=1:nrBoot
                 if isempty(o.tuningFunction)
                     % Ignore the grand mean, correlate the rest
-                    r(i)= corr(bootParmsOne(2:end,i),bootParmsOther(2:end,i));
+                    r(i)= pv.corrFun(bootParmsOne(2:end,i),bootParmsOther(2:end,i));
                     if ~isempty(spikes)
-                        rSpikes(i)= corr(spikeBootParmsOne(2:end,i),spikeBootParmsOther(2:end,i));
-                        rCross(i) = (corr(spikeBootParmsOne(2:end,i),bootParmsOne(2:end,i)) +corr(spikeBootParmsOther(2:end,i),bootParmsOther(2:end,i)))/2;
+                        rSpikes(i)= pv.corrFun(spikeBootParmsOne(2:end,i),spikeBootParmsOther(2:end,i));
+                        rCross(i) = (pv.corrFun(spikeBootParmsOne(2:end,i),bootParmsOne(2:end,i)) +pv.corrFun(spikeBootParmsOther(2:end,i),bootParmsOther(2:end,i)))/2;
                     end
                 else
                     % Predict the tuning and correlate those
@@ -336,8 +352,8 @@ classdef poissyFit< matlab.mixin.Copyable
                     if ~isempty(spikes)
                         tcSpk1= o.tuningFunction(o.uStimulus,spikeBootParmsOne(:,i))';
                         tcSpk2 = o.tuningFunction(o.uStimulus,spikeBootParmsOther(:,i))';
-                        rSpikes(i)= corr(tcSpk1,tcSpk2);
-                        rCross(i) = (corr(tc1,tcSpk1) +corr(tc2,tcSpk2))/2;
+                        rSpikes(i)= pv.corrFun(tcSpk1,tcSpk2);
+                        rCross(i) = (pv.corrFun(tc1,tcSpk1) +pv.corrFun(tc2,tcSpk2))/2;
                     end
                 end
             end
@@ -423,6 +439,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 parfor (i=1:boot,o.nrWorkers)
                     thisTrials = resampleTrials(o,true,1);
                     thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);
+                     guess = [0 o.uStimulus(randi(numel(o.uStimulus))) 0 0 0];
                     solve(thisO,1,guess);
                     tmpBootParms(i,:) = thisO.parms;
                     tmpBootParmsError(i,:) = thisO.parmsError;
@@ -488,7 +505,7 @@ classdef poissyFit< matlab.mixin.Copyable
             o.blankErr = diff(prctile(mResponse(isBlank),[25 75]),1);
             [o.uStimulus,~,o.stimulusIx] = unique(o.stimulus(~isBlank));
             o.tuningCurve = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@mean)/o.binWidth;
-            o.tuningCurveErr = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@(x) (diff(prctile(x,[25 75]),1)))./o.binWidth;
+            o.tuningCurveErr = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@std)/o.binWidth;
             
 
             fixup(o,"BESTGUESS");
@@ -724,7 +741,7 @@ classdef poissyFit< matlab.mixin.Copyable
             % SEE demos/parametric
             arguments
                 x (:,:) double
-                parms (1,3) double
+                parms (:,3) double
                 domain (1,1) double = 180
             end
             offset = parms(1); preferred = parms(2); kappa = exp(parms(3));

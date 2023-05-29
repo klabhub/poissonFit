@@ -2,7 +2,7 @@
 %
 %  Fits tuning curves to experimental data using a range of parameter
 %  choices and determines a goodness of fit (based on split halves and circular
-% standard deviation). This allows a comparison of the spike and Fluorescence fits 
+% standard deviation). This allows a comparison of the spike and Fluorescence fits
 % across a range of parameter choices (to assess the fitting procedures
 % sentisitivity).
 %
@@ -12,15 +12,15 @@ load ../data/exampleData.mat
 
 %% Initialize
 
-nrBoot = 10;  % Nr Bootstrap sets used to estimate circular standard deviation as well as split halves.
-nrWorkers = gcp('nocreate').NumWorkers; % Parfor for bootstrapping
+nrBoot = 100;  % Nr Bootstrap sets used to estimate circular standard deviation as well as split halves.
+nrWorkers = 8; % Parfor for bootstrapping
 spikeCountDist = "POISSON"; % POISSON or EXPONENTIAL
-nrRoisToRun = 3;    % Of the 1000 roi in the file, run the first n.
-parm = 'noise';     % Which parameter should be varied (others get the default value)
-defaultTau = 1.3;   % Default calcium decay tau (Gcamp6s)    
+nrRoisToRun = 20;    % Of the 1000 roi in the file, run the first n.
+parm = 'tau';     % Which parameter should be varied (others get the default value)
+defaultTau = 1.3;   % Default calcium decay tau (Gcamp6s)
 defaultBin = 1/15.5; % Default bin size (framerate of acquisition)
 defaultNoiseFactor = 1; % Default noise factor (the suite2p estimate of the noise is multiplied by this).
-fun = @poissyFit.logTwoVonMises; 
+fun = @poissyFit.logTwoVonMises;
 
 % Determine the range of the varied parameter
 switch (parm)
@@ -50,18 +50,20 @@ parmsError=nan(nrRois,nrPrms,5);
 % determined the splitHalves correlation.
 
 for j = 1:nrPrms
+    % Set defaults
     thisTau =defaultTau;
     thisBin = defaultBin;
-    thisNoise = defaultNoiseFactor;
+    thisNoiseFactor = defaultNoiseFactor;
+    %Overrule the parameter that is being varied
     switch (parm)
-    case 'tau'
-        thisTau = prms(j);
-    case 'binwidth'
-        thisBin =prms(j);
-    case 'noise'
-        thisNoiseFactor =prms(j);
-    otherwise
-        error('Unknown parm')
+        case 'tau'
+            thisTau = prms(j);
+        case 'binwidth'
+            thisBin =prms(j);
+        case 'noise'
+            thisNoiseFactor =prms(j);
+        otherwise
+            error('Unknown parm')
     end
 
     % Extrac the neuropil corrected fluorescence and deconvolved spikes at
@@ -76,7 +78,7 @@ for j = 1:nrPrms
     thisSpk = retime(spk,thisTimes,'linear');
     thisSpk= permute(double(reshape(thisSpk.Variables,[nrTimePoints nrRois nrTrials])),[1 3 2]);
     for roi =1:nrRoisToRun
-        fprintf('Parm #%d ROI #%d (%s)\n',j,roi,datetime('now'))        
+        fprintf('Parm #%d ROI #%d (%s)\n',j,roi,datetime('now'))
         o = poissyFit(direction,thisF(:,:,roi),thisBin,fun);
         o.spikeCountDistribution = spikeCountDist;
         o.tau = thisTau;
@@ -99,11 +101,23 @@ for j = 1:nrPrms
         o.nrWorkers = nrWorkers;
         try
             solve(o,nrBoot); % Bootstrap the results
-            % Store 
+            % Store
             parms(roi,j,:) =o.parms;
             parmsError(roi,j,:)= o.parmsError;
+
+%             oSpk = o.copyWithNewData(o.stimulus,thisSpk(:,:,roi),o.binWidth,o.tuningFunction);
+%             oSpk.tau =0;
+%             oSpk.fPerSpike =1;
+%             oSpk.measurementNoise = mean(oSpk.tuningCurveErr)./mean(o.tuningCurveErr).*o.measurementNoise;
+%             solve(oSpk,nrBoot)
+%             
+
+
             % Bootstrap the splitHalves correlation
             [r(roi,j),~,rSpk(roi,j),~,rCross(roi,j)] = splitHalves(o,nrBoot,[],thisSpk(:,:,roi));
+
+
+            
         catch me
             fprintf(2,'Failed on %d\n',roi)
         end
