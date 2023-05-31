@@ -13,9 +13,9 @@ load ../data/exampleData.mat
 %% Initialize
 
 nrBoot = 100;  % Nr Bootstrap sets used to estimate circular standard deviation as well as split halves.
-nrWorkers = 8; % Parfor for bootstrapping
+nrWorkers = 19; % Parfor for bootstrapping
 spikeCountDist = "POISSON"; % POISSON or EXPONENTIAL
-nrRoisToRun = 10;    % Of the 1000 roi in the file, run the first n.
+nrRoisToRun = 1000;    % Of the 1000 roi in the file, run the first n.
 parm = 'nothing';     % Which parameter should be varied (others get the default value)
 defaultTau = 1.3;   % Default calcium decay tau (Gcamp6s)
 defaultBin = 1/15.5; % Default bin size (framerate of acquisition)

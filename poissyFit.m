@@ -340,8 +340,8 @@ classdef poissyFit< matlab.mixin.Copyable
                 oSpk = []; % Define to avoid parfor complaints
             end
             % Bootstrap fitting on split halves
-            %parfor (i=1:nrBoot, o.nrWorkers)
-            for i=1:nrBoot % Uncomment for debugging
+            parfor (i=1:nrBoot, o.nrWorkers)
+            %for i=1:nrBoot % Uncomment for debugging
                 [oneHalfTrials,otherHalfTrials] =resampleTrials(o,false,0.5) ;
                 thisO = o.copyWithNewData(o.stimulus(:,oneHalfTrials),o.fluorescence(:,oneHalfTrials),o.binWidth,o.tuningFunction);
                 solve(thisO,1,guess);
@@ -471,16 +471,15 @@ classdef poissyFit< matlab.mixin.Copyable
              o.parmsError = sqrt(iH)';           
              warning(state)
             fixup(o,"SOLVE");
-            computeQuality(o)
-            
+            computeQuality(o)                        
             % Perform bootstrap resampling to get a robust estimate of the
             % parms and their errors
             if boot>1
                 tmpBootParms = nan(boot,o.nrParms);
                 tmpBootParmsError = nan(boot,o.nrParms);
                 tmpBootGof = nan(boot,1);
-                %parfor (i=1:boot,o.nrWorkers)
-                    for i=1:boot % For debugging
+                parfor (i=1:boot,o.nrWorkers)
+                %    for i=1:boot % For debugging
                     thisTrials = resampleTrials(o,true,1);
                     thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);                   
                     solve(thisO,1,guess);
@@ -501,7 +500,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 fixup(o,"BOOTSTRAP");
                 % Recompute residuals based on bs estimate
                 computeQuality(o);
-            else
+            else                
                 o.bootParms = [];
                 o.bootParmsError =[];
                 o.bootstrap = 0;

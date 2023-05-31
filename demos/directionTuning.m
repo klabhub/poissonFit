@@ -47,10 +47,11 @@ spk= permute(double(reshape(spk.Variables,[nrTimePoints nrRois nrTrials])),[1 3 
 
 %% Initialize
 nrRois  = size(F,3);
-nrRois = 10;
+
 r       = nan(nrRois,1);
 rSpk    = nan(nrRois,1);
 rCross  = nan(nrRois,1);
+gof  = nan(nrRois,1);
 parms  = nan(nrRois,5);
 parmsError=nan(nrRois,5);
 
@@ -82,11 +83,13 @@ for roi =1:nrRois
     o.measurementNoise =stdF(roi);
     o.nrWorkers = nrWorkers;
     try
-        solve(o,nrBoot);
-        % Store
-        parms(roi,:) =o.parms;
-        parmsError(roi,:)= o.parmsError;
-        [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
+    solve(o,nrBoot);
+    
+    parms(roi,:) =o.parms;
+    parmsError(roi,:)= o.parmsError;
+    gof(roi,prmCntr) = o.gof;
+    [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
+
     catch me
     end
 end
@@ -122,4 +125,4 @@ plot(xlim,[20 20])
 
 
 %% Save
-save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError')
+save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError','gof')
