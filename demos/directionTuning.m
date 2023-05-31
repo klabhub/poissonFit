@@ -82,11 +82,11 @@ for roi =1:nrRois
     o.measurementNoise =stdF(roi);
     o.nrWorkers = nrWorkers;
     try
-    solve(o,nrBoot);
-    
-    parms(roi,:) =o.parms;
-    parmsError(roi,:)= o.parmsError;
-    [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
+        solve(o,nrBoot);
+        % Store
+        parms(roi,:) =o.parms;
+        parmsError(roi,:)= o.parmsError;
+        [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
     catch me
     end
 end
@@ -95,9 +95,12 @@ figure(1);
 clf
 subplot(2,2,1)
 scatter(r,rSpk);
-axis square;
+axis equal
+ylim([-1 1])
+xlim([-1 1])
+
 hold on
-plot(xlim,ylim,'k')
+plot(xlim,xlim,'k')
 xlabel '\sigma_F'
 ylabel '\sigma_{spk}'
 title (sprintf('Tuning curve reliability %.2f (p=%.3g)',mean(r-rSpk),ranksum(r,rSpk)))
