@@ -63,7 +63,7 @@ nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
 spikeCountDist = "POISSON";
 for roi =1:nrRois
     fprintf('ROI #%d (%s)\n',roi,datetime('now'))
-    o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises);
+    o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises,fPerSpike=500,scaleToMax=true);
     o.spikeCountDistribution = spikeCountDist;
     switch spikeCountDist
         case "POISSON"
@@ -83,14 +83,15 @@ for roi =1:nrRois
     o.measurementNoise =stdF(roi);
     o.nrWorkers = nrWorkers;
     try
-    solve(o,nrBoot);
-    
-    parms(roi,:) =o.parms;
-    parmsError(roi,:)= o.parmsError;
-    gof(roi,prmCntr) = o.gof;
-    [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
+        solve(o,nrBoot);
+
+        parms(roi,:) =o.parms;
+        parmsError(roi,:)= o.parmsError;
+        gof(roi) = o.gof;
+        [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
 
     catch me
+        fprintf('Failed on roi #%d (%s)',roi,me.message)
     end
 end
 %% Show Results

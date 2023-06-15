@@ -10,12 +10,10 @@ simulateData
 % specify a tuning function here. The object will then fit one rate per
 % unique stimulus value (here a direction) plus a constant for a total of
 % 13 parameters. 
-
-o = poissyFit(ori(1,:),fluorescence,dt); 
+nrBoostrapSets =100;
+o = poissyFit(ori(1,:),fluorescence,dt,tau=tau,fPerSpike=fPerSpike); 
 % Make sure the object's assumptions match those of the experiment
 
-o.tau =tau;
-o.fPerSpike = fPerSpike;
 o.measurementNoise = measurementNoise;
 % Set options of the optimization (fminunc)
 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...

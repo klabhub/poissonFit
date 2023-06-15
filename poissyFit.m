@@ -35,6 +35,7 @@ classdef poissyFit< matlab.mixin.Copyable
         hasDerivatives         % Integer indicating whether the tuning function has derivatives (1) and or second derivatives (2)
         % This is normally set automatically, but if you use an anonymous function, you may
         % have to overrule the automated setting (See demos/parametric)
+        scaleToMax % Logial indicating whether fluorescence should be scaled to match the nrSpikesMax assumpption
     end
 
     properties (SetAccess=protected)
@@ -142,15 +143,10 @@ classdef poissyFit< matlab.mixin.Copyable
             o.tau= pv.tau;
             o.binWidth = dt;
             o.stimulus = stim;
-            
-            if pv.scaleToMax
-                peakF = max(fluor,[],"all");
-                maxModeledF = o.nrSpikesMax*o.fPerSpike*(1+exp(-o.binWidth/o.tau));  
-                o.scale = maxModeledF/peakF;         
-                fluor = o.scale*fluor; % Scale fluorescence         
-            end          
+            o.scaleToMax = pv.scaleToMax;            
             o.fluorescence = fluor;
            
+            computeScale(o); 
             
             o.tuningFunction = fun;           
             % Check whether the fun has deriviatives. This fails if the fun
@@ -181,17 +177,20 @@ classdef poissyFit< matlab.mixin.Copyable
                 pv.maxRate     (1,1) double = o.maxRate % The maximum spike rate that is considered.
                 pv.fPerSpike (1,1) double = o.fPerSpike % Each spike produces this much Ca/F
                 pv.tau  (1,1) double = o.tau       % Exponential decay time of Ca/F
+                pv.scaleToMax (1,1) double = o.scaleToMax 
             end
             v = copy(o); % Make a shallow copy
             v.maxRate  = pv.maxRate;
             v.fPerSpike= pv.fPerSpike;
             v.tau= pv.tau;
-            
+            v.scaleToMax = pv.scaleToMax;
+
             % Replace the 'data'
             v.stimulus = stim;
-            v.fluorescence = fluor;
+            v.fluorescence = fluor;            
             v.binWidth = dt;
             v.tuningFunction = fun;
+            computeScale(o)
             v.initialize
         end
 
@@ -319,13 +318,6 @@ classdef poissyFit< matlab.mixin.Copyable
                 spikes (:,:) double = [];
                 pv.corrFun = @(x,y)corr(x,y,'Type','Spearman')
             end
-%             arguments (Output)
-%                 r (1,1) double  % Mean of the split-half correlation acros bootstrap sets
-%                 bootParms double  % Parameter estimates in each bootstrap set
-%                 rSpikes (1,1) double  % Mean of the split-half correlation in the deconvolved spikes
-%                 spikeBootParms double % Parameter estimates based one the spikes in each bootstrap set
-%                 rCross (1,1) double % Mean of the correlation between fluorescence and spike estimates
-%             end
             initialize(o);
             % Avoid warnings on display during bootstrapping
             o.options.Display = 'off';
@@ -344,9 +336,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 % We also assume that the measurement noise on the spikes
                 % is a scaled version of the measurement noise on the
                 % fluorescence.
-                oSpk = o.copyWithNewData(o.stimulus,spikes,o.binWidth,o.tuningFunction);
-                oSpk.tau =0;
-                oSpk.fPerSpike =1;
+                oSpk = o.copyWithNewData(o.stimulus,spikes,o.binWidth,o.tuningFunction,tau=0,fPerSpike=1, scaleToMax=true);
                 % Scale the measurement noise by the nonparametric estimate
                 % of the noise in the tuning curves
                 oSpk.measurementNoise = mean(oSpk.tuningCurveErr)./mean(o.tuningCurveErr).*o.measurementNoise;
@@ -497,8 +487,8 @@ classdef poissyFit< matlab.mixin.Copyable
                 tmpBootParms = nan(boot,o.nrParms);
                 tmpBootParmsError = nan(boot,o.nrParms);
                 tmpBootGof = nan(boot,1);
-                parfor (i=1:boot,o.nrWorkers)
-                %    for i=1:boot % For debugging
+               % parfor (i=1:boot,o.nrWorkers)
+                    for i=1:boot % For debugging
                     thisTrials = resampleTrials(o,true,1);
                     thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);                   
                     solve(thisO,1,guess);
@@ -537,6 +527,19 @@ classdef poissyFit< matlab.mixin.Copyable
 
     %% Protected, internal functions
     methods  (Access=protected)
+
+        function computeScale(o)
+            % Scale the fluorescence to match the max given the maximum modeled number
+            % of spikes and the fPerSpike
+            if o.scaleToMax
+                peakF = max(o.fluorescence,[],"all");
+                maxModeledF = o.nrSpikesMax*o.fPerSpike*(1+exp(-o.binWidth/o.tau));  
+                o.scale = maxModeledF/peakF;                    
+            else
+                o.scale = 1;
+            end
+        end
+
         function computeQuality(o)
 
             if isempty(o.tuningFunction)
@@ -556,7 +559,14 @@ classdef poissyFit< matlab.mixin.Copyable
             o.residualNoise = stdR./o.measurementNoise;
 
             fullLL  = -logLikelihood(o,o.parms);
-            constantModelPrms = [log(mean(o.fluorescence,'all')) 0 -inf -inf -inf];
+
+             if isempty(o.tuningFunction)
+                % Grand mean plus tuning
+                constantModelPrms  = log(mean(o.fluorescence,'all'))*ones(size(o.parms));
+            else
+                % Predict the tuning  
+                 constantModelPrms = fixup(o,"QUALITY");
+             end            
             constantLL  = -logLikelihood(o,constantModelPrms);
             o.deviance  = -2*(constantLL-fullLL);
             o.p = chi2cdf(o.deviance,o.nrParms-1,'upper');
@@ -623,16 +633,29 @@ classdef poissyFit< matlab.mixin.Copyable
         end
 
 
-        function fixup(o,what)
+        function varargout = fixup(o,what)
             % Various fixups needed for tuningFunctions. All put in one
             % place to make future additions of additional tuningFunctions
             % a bit easier
             arguments
                 o (1,1) poissyFit
-                what (1,1) string {mustBeMember(what,["BESTGUESS","SOLVE","BOOTSTRAP"])}
+                what (1,1) string {mustBeMember(what,["BESTGUESS","SOLVE","BOOTSTRAP" "QUALITY"])}
             end
+            varargout = cell(nargout,1);
 
             switch (what)
+                case "QUALITY"
+                    if isempty(o.tuningFunction)
+                       % nothing to do
+                    elseif contains((func2str(o.tuningFunction)),'logVonMises')
+                        % Constant model 
+                        varargout{1} = [o.parms(1) 0 -inf ];
+                    elseif contains((func2str(o.tuningFunction)),'logTwoVonMises')
+                        % Constant model 
+                        varargout{1} = [o.parms(1) 0 -inf -inf -inf];
+                    else
+                        errror('PLease add a %s initialization in poissyFit/fixup',what);
+                    end
                 case "BESTGUESS"
                     if isempty(o.tuningFunction)
                         % Because the LL is convex for direct estimation, the

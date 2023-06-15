@@ -12,11 +12,9 @@ simulateData;
 % corresponding fluorescence, the time bin and the tuning function we wish
 % to estimate.
 % 
-o = poissyFit(ori(1,:),fluorescence,dt,tc);
+o = poissyFit(ori(1,:),fluorescence,dt,tc,tau =tau,fPerSpike=fPerSpike);
 o.hasDerivatives = 2; % The logVonMises has both derivatives and hessian output
 % Make sure the object's assumptions match those of the experiment
-o.tau =tau;
-o.fPerSpike = fPerSpike;
 % Set options of the optimization (fminunc)
 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
     'MaxIter',1e8, ...
