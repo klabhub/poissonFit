@@ -31,6 +31,11 @@ direction =direction(trialsToKeep);
 
 save exampleData f np stdF spk direction nrRois stepSize
 
+% Note that the outcome of this comparison is that (for these data, and
+these parameter settings),using the deconvolved spikes leads to better
+performance (better split-halves correlation) than using the (neuropil
+corrected) fluorescence.
+
 %}
 load ../data/exampleData
 

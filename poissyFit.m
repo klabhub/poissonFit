@@ -352,14 +352,14 @@ classdef poissyFit< matlab.mixin.Copyable
             parfor (i=1:nrBoot, o.nrWorkers)
             %for i=1:nrBoot % Uncomment for debugging
                 [oneHalfTrials,otherHalfTrials] =resampleTrials(o,false,0.5) ;
+                % First half
                 thisO = o.copyWithNewData(o.stimulus(:,oneHalfTrials),o.fluorescence(:,oneHalfTrials),o.binWidth,o.tuningFunction);
                 solve(thisO,1,guess);
                 bootParmsOne(:,i) = thisO.parms';
-
+                % Second half
                 thisO = o.copyWithNewData(o.stimulus(:,otherHalfTrials),o.fluorescence(:,otherHalfTrials),o.binWidth,o.tuningFunction);
                 solve(thisO,1,guess);
                 bootParmsOther(:,i) = thisO.parms';
-
 
                 if ~isempty(spikes)
                     % Use the same trials to estimat spike tuning from the
@@ -375,8 +375,7 @@ classdef poissyFit< matlab.mixin.Copyable
             end
 
 
-            %% Determime correlations
-            
+            %% Determime correlations            
             for i=1:nrBoot
                 if isempty(o.tuningFunction)
                     % Ignore the grand mean, correlate the rest
