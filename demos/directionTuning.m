@@ -64,7 +64,7 @@ parmsError=nan(nrRois,5);
 % determined the splitHalves correlation.
 nrBoot = 100;
 nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
-spikeCountDist = "EXPONENTIAL";
+spikeCountDist = "POISSON";
 for roi =1:nrRois
     fprintf('ROI #%d (%s)\n',roi,datetime('now'))
     o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises,fPerSpike=500,scaleToMax=true);
