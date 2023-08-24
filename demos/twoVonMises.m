@@ -12,7 +12,7 @@ nrRepeats        =  12;    % Each orientation is shown this many times
 nrTimePoints     = 10;      % 10 "bins" in each trial
 dt               = 0.1;     % One bin is 100 ms.
 tau              = 1.2;      % Fluorescence indicator decay
-fPerSpike        = 50;      % Fluorescence per spike
+fPerSpike        = 150;      % Fluorescence per spike
 measurementNoise = 1;  % Stdev of the noise
 tuningParms      = [0 90 .01 .5 .1]; % log(Offset)Preferred log(Kappa) log(amp1) log(amp2)
 % Use the built-in logTwoVonMises function
@@ -40,12 +40,10 @@ fluorescence = fluorescence + normrnd(0,measurementNoise,size(fluorescence)); % 
 % corresponding fluorescence, the time bin and the tuning function we wish
 % to estimate.
 % 
-o = poissyFit(oriPerTrial(1,:),fluorescence,dt,tc);
+o = poissyFit(oriPerTrial(1,:),fluorescence,dt,tc,tau=tau,fPerSpike=fPerSpike);
 
 o.nrWorkers = 8;% Use parfor
 % Make sure the object's assumptions match those of the experiment
-o.tau =tau;
-o.fPerSpike = fPerSpike;
 o.measurementNoise = measurementNoise;
 % Set options of the optimization (fminunc)
 o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
@@ -62,9 +60,7 @@ o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
 solve(o,100);
 figure;
 yyaxis right
-
 plot(ori,groundTruth/o.binWidth,'g')
-
 plot(o); % Show the result.
 hold on
 

@@ -487,8 +487,8 @@ classdef poissyFit< matlab.mixin.Copyable
                 tmpBootParms = nan(boot,o.nrParms);
                 tmpBootParmsError = nan(boot,o.nrParms);
                 tmpBootGof = nan(boot,1);
-               % parfor (i=1:boot,o.nrWorkers)
-                    for i=1:boot % For debugging
+                parfor (i=1:boot,o.nrWorkers)
+               %     for i=1:boot % For debugging
                     thisTrials = resampleTrials(o,true,1);
                     thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);                   
                     solve(thisO,1,guess);
@@ -626,7 +626,7 @@ classdef poissyFit< matlab.mixin.Copyable
             maxModeledF = o.nrSpikesMax*o.fPerSpike*(1+exp(-o.binWidth/o.tau));  
             newFPerSpike = peakF./(o.nrSpikesMax*(1+exp(-o.binWidth/o.tau)));
             if peakF > maxModeledF
-                fprintf(2,'The peak Fluorescence (%.3f) is too high for the modeled maximum spike rate (%d). \n \t Scale the input Fluorescence, or increase fPerSpike to at least %.2f\n.',peakF,o.maxRate,newFPerSpike);
+                %fprintf(2,'The peak Fluorescence (%.3f) is too high for the modeled maximum spike rate (%d). \n \t Scale the input Fluorescence, or increase fPerSpike to at least %.2f\n.',peakF,o.maxRate,newFPerSpike);
             end
 
             fixup(o,"BESTGUESS");

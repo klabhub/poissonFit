@@ -47,7 +47,6 @@ spk= permute(double(reshape(spk.Variables,[nrTimePoints nrRois nrTrials])),[1 3 
 
 %% Initialize
 nrRois  = size(F,3);
-
 r       = nan(nrRois,1);
 rSpk    = nan(nrRois,1);
 rCross  = nan(nrRois,1);
@@ -84,16 +83,16 @@ for roi =1:nrRois
     o.nrWorkers = nrWorkers;
     try
         solve(o,nrBoot);
-
         parms(roi,:) =o.parms;
         parmsError(roi,:)= o.parmsError;
         gof(roi) = o.gof;
         [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
-
     catch me
         fprintf('Failed on roi #%d (%s)',roi,me.message)
     end
 end
+
+
 %% Show Results
 figure(1);
 clf
@@ -105,24 +104,25 @@ xlim([-1 1])
 
 hold on
 plot(xlim,xlim,'k')
-xlabel '\sigma_F'
-ylabel '\sigma_{spk}'
-title (sprintf('Tuning curve reliability %.2f (p=%.3g)',mean(r-rSpk),ranksum(r,rSpk)))
+xlabel 'r_F'
+ylabel 'r_{spk}'
+title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(r-rSpk),ranksum(r,rSpk)))
 
 subplot(2,2,2)
 scatter(r,parmsError(:,2),'.')
-xlabel '\sigma_F'
+xlabel 'r_F'
 ylabel 'stdev (deg)'
 hold on
 plot(xlim,[20 20])
+title 'Bootstrap StdDev'
 
 subplot(2,2,3)
 scatter(rSpk,parmsError(:,2),'.')
-xlabel '\sigma_{spk}'
+xlabel 'r_{spk}'
 ylabel 'stdev (deg)'
 hold on
 plot(xlim,[20 20])
-
+title 'Bootstrap StdDev'
 
 
 %% Save

@@ -32,4 +32,5 @@ plot(oriPerTrial,groundTruthTuningCurve/o.binWidth,'g')
 plot(o); % Show the result.
 
 %% Compare F with Spikes fit
-[r,~,rSpk,~,~] = splitHalves(o,nrBoostrapSets,[],nrSpikes)
+[r,~,rSpk,~,~] = splitHalves(o,nrBoostrapSets,[],nrSpikes);
+fprintf("PoissyFit: %.3f vs. Spikes %.3f (split-halves correlation; higher is better, 1 is noise-free maximum)\n",r,rSpk)

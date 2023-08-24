@@ -55,5 +55,13 @@ plot(oriPerTrial,groundTruthTuningCurve/o.binWidth,'g')
 plot(o)
 
 %% Compare F with Spikes fit
-[r,~,rSpk,~,~] = splitHalves(o,nrBoostrapSets,[],nrSpikes)
+% Perormance is quantified as the correlation between split halves of the
+% data set. 1 is the (unattainable) best performance.
+% Note that here the nrSpikes are the ground truth spikes, so performance
+% will generally be good (and comparable to using the fluorescence). For
+% practical applications a comparison between fluorescence and estimated
+% (deconvolved) spikes is more relevant. See demos/directionTuning.m)
+[r,~,rSpk,~,~] = splitHalves(o,nrBoostrapSets,[],nrSpikes);
+fprintf("PoissyFit: %.3f vs. Spikes %.3f (split-halves correlation; higher is better, 1 is noise-free maximum)\n",r,rSpk)
+
 
