@@ -129,6 +129,21 @@ hold on
 plot(xlim,[20 20])
 title 'Bootstrap StdDev'
 
+%% Compare with bayesFit
+
+x= repmat(direction,[nrTimePoints 1]);
+x=x(:);
+nrParms = 4; % Circular gaussian 360
+bfParms  = nan(nrParms,nrRois);
+bfError=nan(nrParms,nrRois);
+bfR = nan(nrRois,1);
+bf = nan(nrRois,1);
+for roi =1:nrRois
+    fprintf('BayesFit ROI #%d (%s)\n',roi,datetime('now'))
+    y=spk(:,:,roi);
+    y = y(:);
+    [bfR(roi),bf(roi),bfParms(:,roi),bfError(:,roi)]= splitHalves(x,y,"fun","circular_gaussian_360","nrBoot",nrBoot);
+end
 
 %% Save
-save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError','gof')
+save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError','gof','bfR','bf','bfError','bfParms')

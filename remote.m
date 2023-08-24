@@ -6,11 +6,11 @@
 additionalPaths = { '/home/bart/poissyFit'};
 
 % Folders I want to git pull origin before running anything on the cluster
-gitFoldersOnAmarel = {'/home/bart/poissyFit'};
+gitFoldersOnAmarel = {'/home/bart/poissyFit','/home/bart/bayesFit'};
 
 % Construc the kSlurm object. Assuming that workers never need more than 
 % 2 hours for the work this script sends them.
-c = kSlurm('Hours',2,...  
+c = kSlurm('Hours',12,...  
             'NumThreads',1,...   % Speeds up remote processes                        
             'AdditionalPaths',additionalPaths, ...
             'StartupFolder','/home/bart/Documents/MATLAB',...
@@ -22,7 +22,7 @@ c.gpo;  % Update remote repo
 % Us a pool for the parfor inside the poissyFit.
 % With 32 on Amarel, the analysis ran at 1 ROI per 2-3 seconds. 
 expression = "directionTuning";
-job = script(c,expression,'Pool',32); 
+job = script(c,expression,'Pool',100); 
 
 
 %% Retrieve the results 
@@ -59,3 +59,6 @@ ylabel 'stdev (deg)'
 hold on
 plot(xlim,[20 20])
 title 'Bootstrap StdDev'
+
+%% Compare with bayesFit
+
