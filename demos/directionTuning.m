@@ -135,12 +135,16 @@ title 'Bootstrap StdDev'
 
 nrBayesRoi = 10;
 nrParms = 4; % Circular gaussian 360
-bfParms  = nan(nrParms,nrRois);
-bfError=nan(nrParms,nrRois);
-bfR = nan(nrRois,1);
+parmsBf  = nan(nrParms,nrRois);
+errorBf=nan(nrParms,nrRois);
+rBf = nan(nrRois,1);
 bf = nan(nrRois,1);
-[~,ix] = sort(r);
-bfRoi = ix(round(linspace(1,nrRois,nrBayesRoi)));
+if POISSYFIT
+    [~,ix] = sort(r);
+    bfRoi = ix(round(linspace(1,nrRois,nrBayesRoi)));
+else
+    bfRoi = round(linspace(1,nrRois,nrBayesRoi));
+end
 if nrBayesRoi >0
     x= repmat(direction,[nrTimePoints 1]);
     x=x(:);
@@ -148,8 +152,8 @@ if nrBayesRoi >0
         fprintf('BayesFit ROI #%d (%s)\n',roi,datetime('now'))
         y=spk(:,:,roi);
         y = y(:);
-        [bfR(roi),bf(roi),bfParms(:,roi),bfError(:,roi)]= splitHalves(x,y,"fun","circular_gaussian_360","nrBoot",nrBoot,'nrWorkers',1);
+        [rBf(roi),bf(roi),parmsBf(:,roi),errorBf(:,roi)]= splitHalves(x,y,"fun","circular_gaussian_360","nrBoot",nrBoot,'nrWorkers',1);
     end
 end
 %% Save
-save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError','gof','bfR','bf','bfError','bfParms')
+save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError','gof','rBf','bf','errorBf','parmsBf')

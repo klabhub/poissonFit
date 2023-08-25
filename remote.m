@@ -11,7 +11,7 @@ gitFoldersOnAmarel = {'/home/bart/poissyFit','/home/bart/bayesFit'};
 % Construc the kSlurm object. Assuming that workers never need more than 
 % 2 hours for the work this script sends them.
 c = kSlurm('Hours',12,...  
-            'NumThreads',1,...   % Speeds up remote processes                        
+            'NumThreads',8,...   % Speeds up remote processes                        
             'AdditionalPaths',additionalPaths, ...
             'StartupFolder','/home/bart/Documents/MATLAB',...
             'CurrentFolder','/home/bart/poissyFit/demos');
@@ -22,7 +22,7 @@ c.gpo;  % Update remote repo
 % Us a pool for the parfor inside the poissyFit.
 % With 32 on Amarel, the analysis ran at 1 ROI per 2-3 seconds. 
 expression = "directionTuning";
-job = script(c,expression,'Pool',11); 
+job = script(c,expression,'Pool',10); 
 
 
 %% Retrieve the results 
