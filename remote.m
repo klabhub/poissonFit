@@ -22,7 +22,7 @@ c.gpo;  % Update remote repo
 % Us a pool for the parfor inside the poissyFit.
 % With 32 on Amarel, the analysis ran at 1 ROI per 2-3 seconds. 
 expression = "directionTuning";
-job = script(c,expression,'Pool',32); 
+job = script(c,expression,'Pool',11); 
 
 
 %% Retrieve the results 
@@ -42,23 +42,45 @@ hold on
 plot(xlim,xlim,'k')
 xlabel 'r_F'
 ylabel 'r_{spk}'
-title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(r-rSpk),ranksum(r,rSpk)))
+title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(rSpk-r),ranksum(r,rSpk)))
 
 subplot(2,2,2)
 scatter(r,parmsError(:,2),'.')
-xlabel 'r_F'
+xlabel 'r'
+ylabel 'stdev (deg)'
+hold on
+plot(xlim,[20 20])
+
+hold on
+scatter(rSpk,parmsError(:,2),'.')
+xlabel 'r'
 ylabel 'stdev (deg)'
 hold on
 plot(xlim,[20 20])
 title 'Bootstrap StdDev'
+
+legend('dF/F','spk')
 
 subplot(2,2,3)
-scatter(rSpk,parmsError(:,2),'.')
+notNan = ~isnan(bfR);
+scatter(rSpk(notNan),bfR(notNan))
+hold on
+axis equal
+ylim([-1 1])
+xlim([-1 1])
+plot(xlim,xlim,'k')
+ylabel 'r_{bf}'
 xlabel 'r_{spk}'
+title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(bfR(notNan)-rSpk(notNan)),ranksum(bfR(notNan),rSpk(notNan))))
+
+subplot(2,2,4)
+scatter(bfR(notNan),bfError(3,notNan),'.')
+xlabel 'r_{bf}'
 ylabel 'stdev (deg)'
 hold on
 plot(xlim,[20 20])
 title 'Bootstrap StdDev'
 
-%% Compare with bayesFit
+
+
 

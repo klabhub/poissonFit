@@ -64,6 +64,8 @@ parmsError=nan(nrRois,5);
 % determined the splitHalves correlation.
 nrBoot = 10;
 nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
+POISSYFIT =false;
+if POISSYFIT
 spikeCountDist = "POISSON";
 for roi =1:nrRois
     fprintf('ROI #%d (%s)\n',roi,datetime('now'))
@@ -96,7 +98,7 @@ for roi =1:nrRois
         fprintf('Failed on roi #%d (%s)',roi,me.message)
     end
 end
-
+end
 
 %% Show Results
 figure(1);
@@ -142,11 +144,11 @@ bfRoi = ix(round(linspace(1,nrRois,nrBayesRoi)));
 if nrBayesRoi >0
     x= repmat(direction,[nrTimePoints 1]);
     x=x(:);
-    for roi =bfRoi'
+    parfor roi =bfRoi'
         fprintf('BayesFit ROI #%d (%s)\n',roi,datetime('now'))
         y=spk(:,:,roi);
         y = y(:);
-        [bfR(roi),bf(roi),bfParms(:,roi),bfError(:,roi)]= splitHalves(x,y,"fun","circular_gaussian_360","nrBoot",nrBoot);
+        [bfR(roi),bf(roi),bfParms(:,roi),bfError(:,roi)]= splitHalves(x,y,"fun","circular_gaussian_360","nrBoot",nrBoot,'nrWorkers',1);
     end
 end
 %% Save
