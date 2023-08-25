@@ -66,83 +66,56 @@ nrBoot = 10;
 nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
 POISSYFIT =false;
 if POISSYFIT
-spikeCountDist = "POISSON";
-for roi =1:nrRois
-    fprintf('ROI #%d (%s)\n',roi,datetime('now'))
-    o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises,fPerSpike=500,scaleToMax=true);
-    o.spikeCountDistribution = spikeCountDist;
-    switch spikeCountDist
-        case "POISSON"
-            o.hasDerivatives = 1;
-            o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
-                'SpecifyObjectiveGradient',true, ...
-                'display','none', ...
-                'CheckGradients',false, ... % Set to true to check supplied gradients against finite differences
-                'diagnostics','off');
-        case "EXPONENTIAL"
-            o.hasDerivatives = 0;
-            o.options =    optimoptions(@fminunc,'Algorithm','quasi-newton', ...
-                'SpecifyObjectiveGradient',false, ...
-                'display','none', ...
-                'diagnostics','off');
-    end
-    o.measurementNoise =stdF(roi);
-    o.nrWorkers = nrWorkers;
-    try
-        solve(o,nrBoot);
-        parms(roi,:) =o.parms;
-        parmsError(roi,:)= o.parmsError;
-        gof(roi) = o.gof;
-        [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
-    catch me
-        fprintf('Failed on roi #%d (%s)',roi,me.message)
+    spikeCountDist = "POISSON";
+    for roi =1:nrRois
+        fprintf('ROI #%d (%s)\n',roi,datetime('now'))
+        o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises,fPerSpike=500,scaleToMax=true);
+        o.spikeCountDistribution = spikeCountDist;
+        switch spikeCountDist
+            case "POISSON"
+                o.hasDerivatives = 1;
+                o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
+                    'SpecifyObjectiveGradient',true, ...
+                    'display','none', ...
+                    'CheckGradients',false, ... % Set to true to check supplied gradients against finite differences
+                    'diagnostics','off');
+            case "EXPONENTIAL"
+                o.hasDerivatives = 0;
+                o.options =    optimoptions(@fminunc,'Algorithm','quasi-newton', ...
+                    'SpecifyObjectiveGradient',false, ...
+                    'display','none', ...
+                    'diagnostics','off');
+        end
+        o.measurementNoise =stdF(roi);
+        o.nrWorkers = nrWorkers;
+        try
+            solve(o,nrBoot);
+            parms(roi,:) =o.parms;
+            parmsError(roi,:)= o.parmsError;
+            gof(roi) = o.gof;
+            [r(roi),~,rSpk(roi),~,rCross(roi)] = splitHalves(o,nrBoot,[],spk(:,:,roi));
+        catch me
+            fprintf('Failed on roi #%d (%s)',roi,me.message)
+        end
     end
 end
-end
 
-%% Show Results
-figure(1);
-clf
-subplot(2,2,1)
-scatter(r,rSpk);
-axis equal
-ylim([-1 1])
-xlim([-1 1])
-
-hold on
-plot(xlim,xlim,'k')
-xlabel 'r_F'
-ylabel 'r_{spk}'
-title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(r-rSpk),ranksum(r,rSpk)))
-
-subplot(2,2,2)
-scatter(r,parmsError(:,2),'.')
-xlabel 'r_F'
-ylabel 'stdev (deg)'
-hold on
-plot(xlim,[20 20])
-title 'Bootstrap StdDev'
-
-subplot(2,2,3)
-scatter(rSpk,parmsError(:,2),'.')
-xlabel 'r_{spk}'
-ylabel 'stdev (deg)'
-hold on
-plot(xlim,[20 20])
-title 'Bootstrap StdDev'
-
-%% Compare with bayesFit
-
+%% Optional - Compare with bayesFit
+% Because bayesFit takes so long, run only a subset of ROI
 nrBayesRoi = 10;
-nrParms = 4; % Circular gaussian 360
+
+nrParms = 4; % Circular gaussian 360 has 4 parms
 parmsBf  = nan(nrParms,nrRois);
 errorBf=nan(nrParms,nrRois);
 rBf = nan(nrRois,1);
 bf = nan(nrRois,1);
 if POISSYFIT
+    % If we have poissyFit results, we spread the BF roi across the range
+    % of r.
     [~,ix] = sort(r);
     bfRoi = ix(round(linspace(1,nrRois,nrBayesRoi)));
 else
+    % Just pick nrBayesRoi from the entire set. (essentially random).
     bfRoi = round(linspace(1,nrRois,nrBayesRoi));
 end
 if nrBayesRoi >0
@@ -157,3 +130,58 @@ if nrBayesRoi >0
 end
 %% Save
 save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError','gof','rBf','bf','errorBf','parmsBf')
+
+
+GRAPH = false;
+if GRAPH
+    %% Show Results
+    figure(1);
+    clf
+    % Scatter of split halves correlation for df/F vs spk
+    subplot(2,2,1)
+    scatter(r,rSpk);
+    axis equal
+    ylim([-1 1])
+    xlim([-1 1])
+    hold on
+    plot(xlim,xlim,'k')
+    xlabel 'r_F'
+    ylabel 'r_{spk}'
+    title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(rSpk-r),ranksum(r,rSpk)))
+
+    subplot(2,2,2)
+    % Scatter of standard devaition of PO across bootstraps against the split halves correlation for df/F and spk
+    scatter(r,parmsError(:,2),'.')
+    xlabel 'r'
+    ylabel 'bootstrap stdev PO (deg)'
+    hold on
+    plot(xlim,[20 20])
+    scatter(rSpk,parmsError(:,2),'.')
+    plot(xlim,[20 20])
+    legend('dF/F','spk')
+
+
+    % Bayesfit results.
+      % Scatter of split halves correlation for BF vs spk
+    subplot(2,2,3)
+    notNan = ~isnan(rBf);
+    scatter(rSpk(notNan),rBf(notNan))
+    hold on
+    axis equal
+    ylim([-1 1])
+    xlim([-1 1])
+    plot(xlim,xlim,'k')
+    ylabel 'r_{bf}'
+    xlabel 'r_{spk}'
+    title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(rBf(notNan)-rSpk(notNan)),ranksum(rBf(notNan),rSpk(notNan))))
+
+    % Scatter of standard devaition of PO across bootstraps against the split
+    % halves correlation for  BF
+    subplot(2,2,4)
+    scatter(rBf(notNan),errorBf(3,notNan),'.')
+    xlabel 'r_{bf}'
+    ylabel 'stdev (deg)'
+    hold on
+    plot(xlim,[20 20])
+
+end

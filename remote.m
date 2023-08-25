@@ -27,59 +27,58 @@ job = script(c,expression,'Pool',10);
 
 %% Retrieve the results 
 wait(job)
-load(job, 'r','rSpk', 'rCross','parms','parmsError','gof','bf','bfR','bfParms','bfError')
+load(job, 'r','rSpk', 'rCross','parms','parmsError','gof','bf','rBf','parmsBf','errorBf')
 
 %% Show Results
-figure(1);
-clf
-subplot(2,2,1)
-scatter(r,rSpk);
-axis equal
-ylim([-1 1])
-xlim([-1 1])
+   figure(1);
+    clf
+    % Scatter of split halves correlation for df/F vs spk
+    subplot(2,2,1)
+    scatter(r,rSpk);
+    axis equal
+    ylim([-1 1])
+    xlim([-1 1])
+    hold on
+    plot(xlim,xlim,'k')
+    xlabel 'r_F'
+    ylabel 'r_{spk}'
+    title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(rSpk-r),ranksum(r,rSpk)))
 
-hold on
-plot(xlim,xlim,'k')
-xlabel 'r_F'
-ylabel 'r_{spk}'
-title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(rSpk-r),ranksum(r,rSpk)))
+    subplot(2,2,2)
+    % Scatter of standard devaition of PO across bootstraps against the split halves correlation for df/F and spk
+    scatter(r,parmsError(:,2),'.')
+    xlabel 'r'
+    ylabel 'bootstrap stdev PO (deg)'
+    hold on
+    plot(xlim,[20 20])
+    scatter(rSpk,parmsError(:,2),'.')
+    plot(xlim,[20 20])
+    legend('dF/F','spk')
 
-subplot(2,2,2)
-scatter(r,parmsError(:,2),'.')
-xlabel 'r'
-ylabel 'stdev (deg)'
-hold on
-plot(xlim,[20 20])
 
-hold on
-scatter(rSpk,parmsError(:,2),'.')
-xlabel 'r'
-ylabel 'stdev (deg)'
-hold on
-plot(xlim,[20 20])
-title 'Bootstrap StdDev'
+    % Bayesfit results.
+      % Scatter of split halves correlation for BF vs spk
+    subplot(2,2,3)
+    notNan = ~isnan(rBf);
+    scatter(rSpk(notNan),rBf(notNan))
+    hold on
+    axis equal
+    ylim([-1 1])
+    xlim([-1 1])
+    plot(xlim,xlim,'k')
+    ylabel 'r_{bf}'
+    xlabel 'r_{spk}'
+    title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(rBf(notNan)-rSpk(notNan)),ranksum(rBf(notNan),rSpk(notNan))))
 
-legend('dF/F','spk')
+    % Scatter of standard devaition of PO across bootstraps against the split
+    % halves correlation for  BF
+    subplot(2,2,4)
+    scatter(rBf(notNan),errorBf(3,notNan),'.')
+    xlabel 'r_{bf}'
+    ylabel 'stdev (deg)'
+    hold on
+    plot(xlim,[20 20])
 
-subplot(2,2,3)
-notNan = ~isnan(bfR);
-scatter(rSpk(notNan),bfR(notNan))
-hold on
-axis equal
-ylim([-1 1])
-xlim([-1 1])
-plot(xlim,xlim,'k')
-ylabel 'r_{bf}'
-xlabel 'r_{spk}'
-title (sprintf('Split halves correlation: Delta = %.2f (p=%.3g)',mean(bfR(notNan)-rSpk(notNan)),ranksum(bfR(notNan),rSpk(notNan))))
-
-subplot(2,2,4)
-scatter(bfR(notNan),bfError(3,notNan),'.')
-xlabel 'r_{bf}'
-ylabel 'stdev (deg)'
-hold on
-plot(xlim,[20 20])
-title 'Bootstrap StdDev'
 
 
 
