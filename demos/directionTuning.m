@@ -63,10 +63,10 @@ parmsError=nan(nrRois,5);
 % For each ROI, fit a logTwoVonMises, bootstrap the parameter estimates and
 % determined the splitHalves correlation.
 nrBoot = 10;
-nrWorkers =1;% gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
+nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
 POISSYFIT =false;
+spikeCountDist = "POISSON";    
 if POISSYFIT
-    spikeCountDist = "POISSON";
     for roi =1:nrRois
         fprintf('ROI #%d (%s)\n',roi,datetime('now'))
         o = poissyFit(direction,F(:,:,roi),stepSize,@poissyFit.logTwoVonMises,fPerSpike=500,scaleToMax=true);
