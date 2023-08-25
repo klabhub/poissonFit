@@ -37,8 +37,14 @@ performance (better split-halves correlation) than using the (neuropil
 corrected) fluorescence.
 
 %}
-load ../data/exampleData
 
+nrBoot = 10;        % Bootstrap iterations for splitHalves
+POISSYFIT =true;    % Run poissyFit on all ROI
+nrBayesRoi = 100;   % Because bayesFit takes so long, run only a subset of ROI
+GRAPH = false;      % Show graphs
+
+% Load the data and rearrange.
+load ../data/exampleData
 thisTimes =seconds(0.5:stepSize:1.5);
 f = retime(f,thisTimes,'linear');
 [nrTimePoints, nrTrials] = size(f);
@@ -62,9 +68,8 @@ parmsError=nan(nrRois,5);
 %% FIT
 % For each ROI, fit a logTwoVonMises, bootstrap the parameter estimates and
 % determined the splitHalves correlation.
-nrBoot = 10;
+
 nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
-POISSYFIT =false;
 spikeCountDist = "POISSON";    
 if POISSYFIT
     for roi =1:nrRois
@@ -101,9 +106,7 @@ if POISSYFIT
 end
 
 %% Optional - Compare with bayesFit
-% Because bayesFit takes so long, run only a subset of ROI
-nrBayesRoi = 10;
-
+% This only runs if nrBayesRoi >0
 nrParms = 4; % Circular gaussian 360 has 4 parms
 parmsBf  = nan(nrParms,nrRois);
 errorBf=nan(nrParms,nrRois);
@@ -131,8 +134,6 @@ end
 %% Save
 save ("../data/directionTuning" + spikeCountDist + ".mat", 'r','rSpk', 'rCross','parms','parmsError','gof','rBf','bf','errorBf','parmsBf')
 
-
-GRAPH = false;
 if GRAPH
     %% Show Results
     figure(1);
