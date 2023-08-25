@@ -131,16 +131,18 @@ title 'Bootstrap StdDev'
 
 %% Compare with bayesFit
 
+nrBayesRoi = 10;
 nrParms = 4; % Circular gaussian 360
 bfParms  = nan(nrParms,nrRois);
 bfError=nan(nrParms,nrRois);
 bfR = nan(nrRois,1);
 bf = nan(nrRois,1);
-BAYESFIT =false;
-if BAYESFIT
+[~,ix] = sort(r);
+bfRoi = ix(round(linspace(1,nrRois,nrBayesRoi)));
+if nrBayesRoi >0
     x= repmat(direction,[nrTimePoints 1]);
     x=x(:);
-    for roi =1:nrRois
+    for roi =bfRoi'
         fprintf('BayesFit ROI #%d (%s)\n',roi,datetime('now'))
         y=spk(:,:,roi);
         y = y(:);
