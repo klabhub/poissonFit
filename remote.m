@@ -3,7 +3,7 @@
 % your machine. 
 
 % Matlab search path
-additionalPaths = { '/home/bart/poissyFit'};
+additionalPaths = { '/home/bart/poissyFit','/home/bart/bayesFit'};
 
 % Folders I want to git pull origin before running anything on the cluster
 gitFoldersOnAmarel = {'/home/bart/poissyFit','/home/bart/bayesFit'};
@@ -27,7 +27,7 @@ job = script(c,expression,'Pool',100);
 
 %% Retrieve the results 
 wait(job)
-load(job, 'r','rSpk', 'rCross','parms','parmsError','gof')
+load(job, 'r','rSpk', 'rCross','parms','parmsError','gof','bf','bfR','bfParms','bfError')
 
 %% Show Results
 figure(1);
