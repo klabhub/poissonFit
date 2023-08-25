@@ -63,7 +63,7 @@ parmsError=nan(nrRois,5);
 % For each ROI, fit a logTwoVonMises, bootstrap the parameter estimates and
 % determined the splitHalves correlation.
 nrBoot = 10;
-nrWorkers = gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
+nrWorkers =1;% gcp('nocreate').NumWorkers ; % Parfor for bootstrapping
 POISSYFIT =false;
 if POISSYFIT
     spikeCountDist = "POISSON";
@@ -116,12 +116,12 @@ if POISSYFIT
     bfRoi = ix(round(linspace(1,nrRois,nrBayesRoi)));
 else
     % Just pick nrBayesRoi from the entire set. (essentially random).
-    bfRoi = round(linspace(1,nrRois,nrBayesRoi));
+    bfRoi = (1:nrBayesRoi);
 end
 if nrBayesRoi >0
     x= repmat(direction,[nrTimePoints 1]);
     x=x(:);
-    parfor roi =bfRoi'
+    parfor roi =bfRoi(:)'
         fprintf('BayesFit ROI #%d (%s)\n',roi,datetime('now'))
         y=spk(:,:,roi);
         y = y(:);
