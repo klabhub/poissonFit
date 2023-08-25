@@ -112,19 +112,10 @@ parmsBf  = nan(nrParms,nrRois);
 errorBf=nan(nrParms,nrRois);
 rBf = nan(nrRois,1);
 bf = nan(nrRois,1);
-if POISSYFIT
-    % If we have poissyFit results, we spread the BF roi across the range
-    % of r.
-    [~,ix] = sort(r);
-    bfRoi = ix(round(linspace(1,nrRois,nrBayesRoi)));
-else
-    % Just pick nrBayesRoi from the entire set. (essentially random).
-    bfRoi = (1:nrBayesRoi);
-end
 if nrBayesRoi >0
     x= repmat(direction,[nrTimePoints 1]);
     x=x(:);
-    parfor roi =bfRoi(:)'
+    parfor roi =1:nrBayesRoi
         fprintf('BayesFit ROI #%d (%s)\n',roi,datetime('now'))
         y=spk(:,:,roi);
         y = y(:);

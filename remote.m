@@ -20,13 +20,14 @@ c.gpo;  % Update remote repo
 
 %%  Run a script
 % Us a pool for the parfor inside the poissyFit.
-% With 32 on Amarel, the analysis ran at 1 ROI per 2-3 seconds. 
+% With 32 on Amarel, the poissyFit analysis ran at 1 ROI per 2-3 seconds. 
 expression = "directionTuning";
-job = script(c,expression,'Pool',10); 
-
-
-%% Retrieve the results 
+job = script(c,expression,'Pool',32); 
+% Retrieve the results 
+fprintf('Job sumitted. Waiting...')
+tic;
 wait(job)
+toc
 load(job, 'r','rSpk', 'rCross','parms','parmsError','gof','bf','rBf','parmsBf','errorBf')
 
 %% Show Results
