@@ -529,10 +529,11 @@ classdef poissyFit< matlab.mixin.Copyable
 
         function computeScale(o)
             % Scale the fluorescence to match the max given the maximum modeled number
-            % of spikes and the fPerSpike
+            % of spikes and the fPerSpike  (assuming 10 consecutive bins
+            % of max rate).
             if o.scaleToMax
                 peakF = max(o.fluorescence,[],"all");
-                maxModeledF = o.nrSpikesMax*o.fPerSpike*(1+exp(-o.binWidth/o.tau));  
+                maxModeledF = o.nrSpikesMax*o.fPerSpike*sum(exp(-(0:10)*o.binWidth./o.tau));  
                 o.scale = maxModeledF/peakF;                    
             else
                 o.scale = 1;
