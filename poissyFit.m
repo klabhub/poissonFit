@@ -17,10 +17,10 @@ classdef poissyFit< matlab.mixin.Copyable
     % BK - May 2023.
     properties (SetAccess=public,GetAccess=public)
         nrWorkers       = 0; % Set to >0 to use parfor for bootstrap resampling
-        
-        spikeCountDistribution (1,1) string = "POISSON";% Assumed spike count distribution. POISSON or EXPONENTIAL
-        
-         measurementNoise  = 1;      % Standard deviation of Fluorescence measurement
+
+        spikeCountDistribution (1,1) string = "POISSON";% Assumed spike count distribution. POISSON 
+
+        measurementNoise  = 1;      % Standard deviation of Fluorescence measurement
 
         tuningFunction  = []  % Tuning function for direct parametric estimation.
         % Optimization parameters.
@@ -66,8 +66,7 @@ classdef poissyFit< matlab.mixin.Copyable
         parmsError              % Errors on the parameter estimates.
         parmsCI                 % Confidence interval based on bootstrap
         deviance                % Deviance between the full model and the grand-mean model.
-        p                       % P-value of the likelihood ratio test.
-        bootstrap               % Number of bootstrap sets used to estimate parms/parmsError.
+        p                       % P-value of the likelihood ratio test.        
         % If this is 1, the parms are the result of
         % the ML fit, if it is >1 they are the
         % mean of the bootstrap sets (and the error
@@ -143,14 +142,14 @@ classdef poissyFit< matlab.mixin.Copyable
             o.tau= pv.tau;
             o.binWidth = dt;
             o.stimulus = stim;
-            o.scaleToMax = pv.scaleToMax;            
+            o.scaleToMax = pv.scaleToMax;
             o.fluorescence = fluor;
-           
+
             % Scale the fluorescence to match assumptions about maximum
-            % spike rate. 
-            computeScale(o); 
-            
-            o.tuningFunction = fun;           
+            % spike rate.
+            computeScale(o);
+
+            o.tuningFunction = fun;
             % Check whether the fun has deriviatives. This fails if the fun
             % is an anonymous function - the user then has to set
             % .hasDerivatives manually.
@@ -179,7 +178,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 pv.maxRate     (1,1) double = o.maxRate % The maximum spike rate that is considered.
                 pv.fPerSpike (1,1) double = o.fPerSpike % Each spike produces this much Ca/F
                 pv.tau  (1,1) double = o.tau       % Exponential decay time of Ca/F
-                pv.scaleToMax (1,1) double = o.scaleToMax 
+                pv.scaleToMax (1,1) double = o.scaleToMax
             end
             v = copy(o); % Make a shallow copy
             v.maxRate  = pv.maxRate;
@@ -189,13 +188,13 @@ classdef poissyFit< matlab.mixin.Copyable
 
             % Replace the 'data'
             v.stimulus = stim;
-            v.fluorescence = fluor;            
+            v.fluorescence = fluor;
             v.binWidth = dt;
-            v.tuningFunction = fun;            
+            v.tuningFunction = fun;
             v.initialize
         end
 
-            function [lambda,dLogLambda,d2LogLambda]  = lambdaFromStimulus(o,parms)
+        function [lambda,dLogLambda,d2LogLambda]  = lambdaFromStimulus(o,parms)
             % Given the current parameter estimates, return the underlying lambda
             % (i.e. the poisson rate) for each time bin in the data.
             if isempty(o.tuningFunction)
@@ -239,28 +238,29 @@ classdef poissyFit< matlab.mixin.Copyable
             neg = predictedTuningCurve - predictedTuningCurveLow;
 
             yyaxis right
-            
+
             if pv.showBootstrapSets
                 if isempty(o.tuningFunction)
-                    bsPredictedTuningCurve= exp(o.bootParms(:,2:end));% + o.parms(1));                
+                    bsPredictedTuningCurve= exp(o.bootParms(:,2:end));% + o.parms(1));
                 else
-                    bsPredictedTuningCurve = nan(o.bootstrap,numel(predictedTuningCurve));
-                    for i=1:o.bootstrap
+                    nrBoot  =size(o.bootParms,1);
+                    bsPredictedTuningCurve = nan(nrBoot,numel(predictedTuningCurve));
+                    for i=1:nrBoot
                         bsPredictedTuningCurve(i,:) = exp(o.tuningFunction(o.uStimulus,o.bootParms(i,:)))';
-                    end                
+                    end
                 end
-                plot(o.uStimulus,1./o.binWidth*bsPredictedTuningCurve,'Color',[0.8 0.8 0.8])               
+                plot(o.uStimulus,1./o.binWidth*bsPredictedTuningCurve,'Color',[0.8 0.8 0.8])
             end
             hold on
             if pv.showErrorbars
                 h2= errorbar(o.uStimulus,1./o.binWidth*predictedTuningCurve,1./o.binWidth*pos,1./o.binWidth.*neg,'r');
             else
                 h2= plot(o.uStimulus,1./o.binWidth*predictedTuningCurve,'r','linewidth',2);
-            end                       
+            end
             ylimR = ylim;
             ylabel 'Lambda (spk/s)'
             xlabel 'Stimulus'
-            
+
 
 
             yyaxis left
@@ -273,7 +273,7 @@ classdef poissyFit< matlab.mixin.Copyable
 
             if pv.equalAxes
                 yl = [0 max(ylimL(2),ylimR(2))];
-                yyaxis left 
+                yyaxis left
                 ylim(yl)
                 yyaxis right
                 ylim(yl)
@@ -312,7 +312,7 @@ classdef poissyFit< matlab.mixin.Copyable
             % matrix [nrTimePoints nrTrials] used by poissyFit.
             %
 
-            arguments 
+            arguments
                 o (1,1) poissyFit
                 nrBoot  (1,1) double {mustBeInteger,mustBePositive}  =250  % The number of randomly sampled split halves to use
                 guess = []  % The initial guess for parameter estimation ([] uses the internal guess).
@@ -351,7 +351,7 @@ classdef poissyFit< matlab.mixin.Copyable
             end
             % Bootstrap fitting on split halves
             parfor (i=1:nrBoot, o.nrWorkers)
-            %for i=1:nrBoot % Uncomment for debugging
+                %for i=1:nrBoot % Uncomment for debugging
                 [oneHalfTrials,otherHalfTrials] =resampleTrials(o,false,0.5) ;
                 % First half
                 thisO = o.copyWithNewData(o.stimulus(:,oneHalfTrials),o.fluorescence(:,oneHalfTrials),o.binWidth,o.tuningFunction);
@@ -376,7 +376,7 @@ classdef poissyFit< matlab.mixin.Copyable
             end
 
 
-            %% Determime correlations            
+            %% Determime correlations
             for i=1:nrBoot
                 if isempty(o.tuningFunction)
                     % Ignore the grand mean, correlate the rest
@@ -423,15 +423,15 @@ classdef poissyFit< matlab.mixin.Copyable
             % nature of the spiking plus the measurement noise. So it
             % cannot simply be used as the measurement noise, but it may
             % help to determine whether some independent measure for
-            % measurement noise is reasonable. 
-           if o.tau>eps               
+            % measurement noise is reasonable.
+            if o.tau>eps
                 state = cat(1,o.DM(:,2:end,:),o.DM(:,1:end-1,:));
                 state = reshape(state,size(o.DM,1)*2,(o.nrTimePoints-1)*o.nrTrials)';
-           else
-               % No history ; state is a single time bin
-               state = o.DM(:,2:end,:);              
-               state = reshape(state,size(o.DM,1),(o.nrTimePoints-1)*o.nrTrials)';
-           end
+            else
+                % No history ; state is a single time bin
+                state = o.DM(:,2:end,:);
+                state = reshape(state,size(o.DM,1),(o.nrTimePoints-1)*o.nrTrials)';
+            end
             [~,~,ix] = unique(state,'rows');
             f = o.fluorescence(2:end,:);
             nrSpk = f./o.fPerSpike;
@@ -471,16 +471,16 @@ classdef poissyFit< matlab.mixin.Copyable
                 guess  = o.bestGuess;
             end
             % Solve the  minimization problem.
-            [o.parms,ll,o.exitFlag,output,derivative,hessian] = fminunc(@o.logLikelihood,guess,o.options); %#ok<ASGLU> 
+            [o.parms,ll,o.exitFlag,output,derivative,hessian] = fminunc(@o.logLikelihood,guess,o.options); %#ok<ASGLU>
             % The Hessian is usually not very informative.
-             state = warning('query');
-             warning('off','MATLAB:nearlySingularMatrix')
-             iH = diag(inv(hessian));
-             iH(iH<0) = NaN; % Negative element means we're not at a (local) minimum. Probably a flat piece of the LL.
-             o.parmsError = sqrt(iH)';           
-             warning(state)
+            state = warning('query');
+            warning('off','MATLAB:nearlySingularMatrix')
+            iH = diag(inv(hessian));
+            iH(iH<0) = NaN; % Negative element means we're not at a (local) minimum. Probably a flat piece of the LL.
+            o.parmsError = sqrt(iH)';
+            warning(state)
             fixup(o,"SOLVE");
-            computeQuality(o)                        
+            computeQuality(o)
             % Perform bootstrap resampling to get a robust estimate of the
             % parms and their errors
             if boot>1
@@ -488,9 +488,9 @@ classdef poissyFit< matlab.mixin.Copyable
                 tmpBootParmsError = nan(boot,o.nrParms);
                 tmpBootGof = nan(boot,1);
                 parfor (i=1:boot,o.nrWorkers)
-               %     for i=1:boot % For debugging
+                    %     for i=1:boot % For debugging
                     thisTrials = resampleTrials(o,true,1);
-                    thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);                   
+                    thisO = o.copyWithNewData(o.stimulus(:,thisTrials),o.fluorescence(:,thisTrials),o.binWidth,o.tuningFunction);
                     solve(thisO,1,guess);
                     tmpBootParms(i,:) = thisO.parms;
                     tmpBootParmsError(i,:) = thisO.parmsError;
@@ -503,21 +503,19 @@ classdef poissyFit< matlab.mixin.Copyable
                 o.parmsError = std(tmpBootParms,0,1,'omitnan');
                 o.gof = mean(tmpBootGof,1,"omitnan");
                 o.parmsCI = prctile(tmpBootParms,[2.5 97.5]);
-                
-                o.bootstrap  = boot;
+
                 o.bootParms = tmpBootParms;
                 o.bootParmsError = tmpBootParmsError;
                 o.bootGof = tmpBootGof;
                 fixup(o,"BOOTSTRAP");
                 % Recompute residuals based on bs estimate
                 computeQuality(o);
-            else                
+            else
                 o.bootParms = [];
-                o.bootParmsError =[];
-                o.bootstrap = 0;
+                o.bootParmsError =[];                
             end
 
-           
+
         end
 
 
@@ -534,8 +532,8 @@ classdef poissyFit< matlab.mixin.Copyable
             % of max rate).
             if o.scaleToMax
                 peakF = max(o.fluorescence,[],"all");
-                maxModeledF = o.nrSpikesMax*o.fPerSpike*sum(exp(-(0:10)*o.binWidth./o.tau));  
-                o.scale = maxModeledF/peakF;                    
+                maxModeledF = o.nrSpikesMax*o.fPerSpike*sum(exp(-(0:10)*o.binWidth./o.tau));
+                o.scale = maxModeledF/peakF;
             else
                 o.scale = 1;
             end
@@ -546,14 +544,14 @@ classdef poissyFit< matlab.mixin.Copyable
 
             if isempty(o.tuningFunction)
                 % Grand mean plus tuning
-                tc = exp(o.parms(2:end)')+o.parms(1);                                                
+                tc = exp(o.parms(2:end)')+o.parms(1);
             else
-                % Predict the tuning 
+                % Predict the tuning
                 tc= exp(o.tuningFunction(o.uStimulus,o.parms)');
             end
             o.gof = corr(tc,o.tuningCurve,'type','Spearman');
 
-            
+
             residuals = tc(o.stimulusIx)'-o.fluorescence;
             meanR = mean(residuals,"all","omitnan");
             stdR =  std(residuals,0,"all","omitnan");
@@ -562,13 +560,13 @@ classdef poissyFit< matlab.mixin.Copyable
 
             fullLL  = -logLikelihood(o,o.parms);
 
-             if isempty(o.tuningFunction)
+            if isempty(o.tuningFunction)
                 % Grand mean plus tuning
                 constantModelPrms  = log(mean(o.fluorescence,'all'))*ones(size(o.parms));
             else
-                % Predict the tuning  
-                 constantModelPrms = fixup(o,"QUALITY");
-             end            
+                % Predict the tuning
+                constantModelPrms = fixup(o,"QUALITY");
+            end
             constantLL  = -logLikelihood(o,constantModelPrms);
             o.deviance  = -2*(constantLL-fullLL);
             o.p = chi2cdf(o.deviance,o.nrParms-1,'upper');
@@ -619,16 +617,16 @@ classdef poissyFit< matlab.mixin.Copyable
             [o.uStimulus,~,o.stimulusIx] = unique(o.stimulus(~isBlank));
             o.tuningCurve = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@mean)/o.binWidth;
             o.tuningCurveErr = accumarray(o.stimulusIx,mResponse(~isBlank)',[],@std)/o.binWidth;
-            
+
 
             % Heuristic sanity checks
             peakF = prctile(o.fluorescence(:),99);
             % The maximum fluorescence that could occur is ten successive
-            % bins with the maxmimum number of modeled spikes:            
-            maxModeledF = o.nrSpikesMax*o.fPerSpike*sum(exp(-(0:10)*o.binWidth./o.tau));  
+            % bins with the maxmimum number of modeled spikes:
+            maxModeledF = o.nrSpikesMax*o.fPerSpike*sum(exp(-(0:10)*o.binWidth./o.tau));
             newFPerSpike = peakF./(o.nrSpikesMax*(1+exp(-o.binWidth/o.tau)));
             if peakF > maxModeledF
-               fprintf(2,'The peak Fluorescence (%.3f) is too high for the modeled maximum spike rate (%d). \n \t Scale the input Fluorescence, or increase fPerSpike to at least %.2f\n.',peakF,o.maxRate,newFPerSpike);
+                fprintf(2,'The peak Fluorescence (%.3f) is too high for the modeled maximum spike rate (%d). \n \t Scale the input Fluorescence, or increase fPerSpike to at least %.2f\n.',peakF,o.maxRate,newFPerSpike);
             end
 
             fixup(o,"BESTGUESS");
@@ -648,12 +646,12 @@ classdef poissyFit< matlab.mixin.Copyable
             switch (what)
                 case "QUALITY"
                     if isempty(o.tuningFunction)
-                       % nothing to do
+                        % nothing to do
                     elseif contains((func2str(o.tuningFunction)),'logVonMises')
-                        % Constant model 
+                        % Constant model
                         varargout{1} = [o.parms(1) 0 -inf ];
                     elseif contains((func2str(o.tuningFunction)),'logTwoVonMises')
-                        % Constant model 
+                        % Constant model
                         varargout{1} = [o.parms(1) 0 -inf -inf -inf];
                     else
                         errror('PLease add a %s initialization in poissyFit/fixup',what);
@@ -683,8 +681,8 @@ classdef poissyFit< matlab.mixin.Copyable
                     if isempty(o.tuningFunction)
                         % Nothing to do
                     elseif contains((func2str(o.tuningFunction)),'logVonMises')
-                          % Cannot wrap as this could be 180 or 360
-                          % periodicity
+                        % Cannot wrap as this could be 180 or 360
+                        % periodicity
                     elseif contains((func2str(o.tuningFunction)),'logTwoVonMises')
                         if o.parms(5)>o.parms(4)
                             % Either amp1 or amp2 could be the preferred direction. For consistency
@@ -704,33 +702,42 @@ classdef poissyFit< matlab.mixin.Copyable
                         % Nothing to do
                     elseif contains((func2str(o.tuningFunction)),'logVonMises') || ...
                             contains((func2str(o.tuningFunction)),'logTwoVonMises')
-                        % Estimate distributions are highly skewed use
-                        % median
-                        o.parms      = median(o.bootParms,1,'omitnan');
-                        iqr = @(x) (diff(prctile(x,[25 75]),1));
-                        o.parmsError = iqr(o.bootParms);
-                     
-                        % Determine preferred axis and circular standard deviation                        
-                        
+                       
+                        % Determine preferred axis and circular standard deviation
+
                         % Multiply by two in case the preferred swaps
                         % between bootstrap sets (i.e. an orientation tuned
                         % neuron).
                         z = exp(2*pi/180*1i*o.bootParms(:,2));
                         R = mean(z);
-                        
-                        o.parmsError(2) = 180/pi*sqrt(-2*log(abs(R))); % Circular standard deviation
-                        preferredAxis = angle(R)/2; % Back to the original 360 space 
-                        % Because we always call the direction with the highest amplitude the 
+
+                        preferredOrAntiPreferred = angle(R)/2; % Back to the original 360 space
+                        % Because we always call the direction with the highest amplitude the
                         % preferred direction (see "SOLVE" above), we just have to count which occurs
-                        % most frequently : preferredAxis or preferredAxis+180. 
+                        % most frequently : preferredAxis or preferredAxis+180.
                         z = exp(pi/180*1i*o.bootParms(:,2));
-                        inner = [real(z), imag(z)]*[cos(preferredAxis); sin(preferredAxis)];                        
-                        axisIsDirection = mean(inner>0)>0.5;
-                        if axisIsDirection
-                            o.parms(2) = preferredAxis*180/pi;
+                        inner = [real(z), imag(z)]*[cos(preferredOrAntiPreferred); sin(preferredOrAntiPreferred)];
+                        if mean(inner>0)>0.5                           
+                            isPreferred = inner>0;
                         else
-                            o.parms(2) = preferredAxis*180/pi+180;
+                            isPreferred = inner<0;                            
                         end
+
+                        o.bootParms(~isPreferred,[2 4 5]) = o.bootParms(~isPreferred,[2 5 4]) + [180 0 0];
+                        o.bootParms(:,2)= mod(o.bootParms(:,2),360);% Convenience
+
+                         
+                        o.parms      = mean(o.bootParms,1,'omitnan');                        
+                        o.parmsError = std(o.bootParms,0,1,"omitnan");                        
+                        o.parmsCI = prctile(o.bootParms,[2.5 97.5]);
+                        % Correct circular vriables.
+                        z = exp(pi/180*1i*o.bootParms(:,2));
+                        o.parms(2) = 180/pi*angle(mean(z));   
+                        stdev = 180/pi*sqrt(-2*log(abs(R))); % Circular standard deviation
+                        o.parmsError(2) = stdev;
+                        % Use circular standard deviation as the
+                        % confidence limits.
+                        o.parmsCI(:,2) = mod(o.parms(:,2) + stdev*[-1 1]',360);
                     else
                         errror('PLease add a %s initialization in poissyFit/fixup',what);
                     end
@@ -864,18 +871,18 @@ classdef poissyFit< matlab.mixin.Copyable
                         part2 = tensorprod(d2LogLambda(:,:,2:end,:),B,[3 4],[1 2]);
                         hessian  = (part1 +  part2);
                     end
-                    
+
                 case 'EXPONENTIALLOGARITHMIC'
                     error('not implemented yet')
-                        n = o.nrTimePoints*o.nrTrials;
-                        beta = parms(1); 
-                        p = exp(parms(2));
-                        
-                        ll = -n.*log(-log(p)+eps) + n.*log(beta) + n.*log(1-p+eps) - beta.*sum(o.fluorescence,"all") - sum(log(1-(1-p).*exp(-beta.*o.fluorescence)),"all");
-                        if o.hasDerivatives > 0 && nargout >1
+                    n = o.nrTimePoints*o.nrTrials;
+                    beta = parms(1);
+                    p = exp(parms(2));
 
-                            %derivative = 
-                        end
+                    ll = -n.*log(-log(p)+eps) + n.*log(beta) + n.*log(1-p+eps) - beta.*sum(o.fluorescence,"all") - sum(log(1-(1-p).*exp(-beta.*o.fluorescence)),"all");
+                    if o.hasDerivatives > 0 && nargout >1
+
+                        %derivative =
+                    end
             end
         end
 
@@ -947,7 +954,8 @@ classdef poissyFit< matlab.mixin.Copyable
             % y = amp1*exp(kappa*cos((x - preferred))) +amp2*exp(kappa*cos((x - preferred-180)))+offset;
             %
             % INPUT
-            % x - Stimulus angles in degrees. Use NaN for blanks (no stimulus)
+            % x - Stimulus angles in degrees. Use NaN for blanks (no
+            % stimulus). 
             % parms - parameter vector - [offset, preferred , kappa, amp1 ,amp2]
             %
             % OUTPUT
@@ -958,8 +966,8 @@ classdef poissyFit< matlab.mixin.Copyable
             %
             % SEE demos/twoVonMises for an example usage.
 
-            arguments 
-                x (:,:) double
+            arguments
+                x (1,:) double
                 parms (1,5) double
             end
             offset = exp(parms(1)); preferred = parms(2); kappa = exp(parms(3));amp1=exp(parms(4)); amp2=exp(parms(5));
@@ -968,36 +976,58 @@ classdef poissyFit< matlab.mixin.Copyable
             term2 = amp2*exp(kappa*cos(deg2rad*(x-preferred-180)));
             twoVonM = term1 + term2 + offset;
             y = log(twoVonM);
+            % Handle blank (no stimulus)
+            blankInds = isnan(x);
+            y(blankInds) = offset;
+                       
             % The analytic derivatives (checked against the numeric finite
             % differences).
             % [dy/doffset  dy/dpreferred dy/dkappa dy/damp1 dy/damp2]
+            
+            if nargout>1
             firstDerivative = repmat(1./twoVonM,[5 1]).*cat(1,offset*ones(1,numel(x)),...
                 term1.*kappa.*deg2rad.*sin(deg2rad*(x-preferred)) + term2.*deg2rad.*kappa.*sin(deg2rad*(x-preferred-180)),...
                 kappa.*cos(deg2rad.*(x-preferred)).*term1 +kappa.*cos(deg2rad.*(x-preferred-180)).*term2,...
                 amp1.*exp(kappa*cos(deg2rad.*(x-preferred))),...
                 amp2.*exp(kappa*cos(deg2rad.*(x-preferred-180))));
-
-            % Handle blank (no stimulus)
-            blankInds = isnan(x);
-            y(blankInds) = offset;
-            firstDerivative(:,blankInds) = 0;
+                firstDerivative(:,blankInds) = 0;
+            end
+            
 
         end
-        
-        function [preferred,prefPeak,antiPeak,kappa,offset] = twoVonMisesParms(prms,binWidth)
+
+        function [out] = convertLogParms(in,binWidth,mode)
             % Function to translate the internal estimated parms into more
             % meaningulf preferred, preferred peak, anti-preferred
-            % peak, offset, and kappa parameters. 
+            % peak, offset, and kappa parameters (or vice versa, depending
+            % on the mode).
             arguments
-                prms (:,5) double % A matrix of parameters for the logTwoVonMises function
+                in (:,5) double % A matrix of parameters for the logTwoVonMises function
                 binWidth (1,1) double =1  % The bin width used in the fitting (o.binWidth). Use this to scale to amplitudes per second
+                mode (1,1) string {mustBeMember(mode,["log2lin","lin2log"])} = "log2lin"
             end
-            offset = exp(prms(:,1));
-            preferred = mod(prms(:,2),360);
-            kappa = exp(prms(:,3));
-            prefPeak = (offset + exp(prms(:,4)).*exp(kappa))./binWidth;
-            antiPeak = (offset + exp(prms(:,5)).*exp(kappa))./binWidth;                
+            switch mode
+                case "log2lin"
+                    % Convert from internal representation to  preferred, preferred peak, anti-preferred
+                    % peak, offset, and kappa parameters.
+                    offset = exp(in(:,1));
+                    preferred = mod(in(:,2),360);
+                    kappa = exp(in(:,3));
+                    prefPeak = (offset + exp(in(:,4)).*exp(kappa))./binWidth;
+                    antiPeak = (offset + exp(in(:,5)).*exp(kappa))./binWidth;
+                    out = [preferred prefPeak antiPeak kappa offset];
+                case "lin2log"
+                    % The inverse transform; from linear to log
+                    % parameters used in the object.
+                    out(:,1) = log(in(:,5));
+                    out(:,2) = in(:,1);
+                    out(:,3) = log(in(:,4));
+                    out(:,4) = log( (binWidth*in(:,2) - in(:,5))./exp(in(:,4)));
+                    out(:,5) = log( (binWidth*in(:,3) - in(:,5))./exp(in(:,4)));
+            end
         end
+
+        
     end
 
 end
