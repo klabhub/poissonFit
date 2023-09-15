@@ -732,7 +732,8 @@ classdef poissyFit< matlab.mixin.Copyable
                         o.parmsCI = prctile(o.bootParms,[2.5 97.5]);
                         % Correct circular vriables.
                         z = exp(pi/180*1i*o.bootParms(:,2));
-                        o.parms(2) = 180/pi*angle(mean(z));   
+                        R = mean(z);
+                        o.parms(2) = 180/pi*angle(R);   
                         stdev = 180/pi*sqrt(-2*log(abs(R))); % Circular standard deviation
                         o.parmsError(2) = stdev;
                         % Use circular standard deviation as the
@@ -914,7 +915,7 @@ classdef poissyFit< matlab.mixin.Copyable
                 parms (1,3) double
                 domain (1,1) double = 180
             end
-            offset = parms(1); preferred = parms(2); kappa = exp(parms(3));
+                offset = parms(1); preferred = parms(2); kappa = exp(parms(3));
             domainMultiplier = 360/domain*pi/180; % If only considering orientation, map angles to [0 180]
 
             delta = (x-preferred);
@@ -967,15 +968,16 @@ classdef poissyFit< matlab.mixin.Copyable
             % SEE demos/twoVonMises for an example usage.
 
             arguments
-                x (1,:) double
+                x (:,:) double
                 parms (1,5) double
             end
-            offset = exp(parms(1)); preferred = parms(2); kappa = exp(parms(3));amp1=exp(parms(4)); amp2=exp(parms(5));
-            deg2rad =pi/180;
+            
+            offset = exp(parms(1)); preferred = parms(2); kappa = exp(parms(3));amp1=exp(parms(4)); amp2=exp(parms(5));         
+             deg2rad =pi/180;
             term1 = amp1*exp(kappa*cos(deg2rad*(x-preferred)));
             term2 = amp2*exp(kappa*cos(deg2rad*(x-preferred-180)));
             twoVonM = term1 + term2 + offset;
-            y = log(twoVonM);
+            y = log(twoVonM +eps);
             % Handle blank (no stimulus)
             blankInds = isnan(x);
             y(blankInds) = offset;
@@ -993,37 +995,30 @@ classdef poissyFit< matlab.mixin.Copyable
                 firstDerivative(:,blankInds) = 0;
             end
             
-
         end
 
-        function [out] = convertLogParms(in,binWidth,mode)
+        function [out] = convertLogParms(in,mode)
             % Function to translate the internal estimated parms into more
             % meaningulf preferred, preferred peak, anti-preferred
             % peak, offset, and kappa parameters (or vice versa, depending
             % on the mode).
             arguments
-                in (:,5) double % A matrix of parameters for the logTwoVonMises function
-                binWidth (1,1) double =1  % The bin width used in the fitting (o.binWidth). Use this to scale to amplitudes per second
+                in (:,5) double % A matrix of parameters for the logTwoVonMises function                
                 mode (1,1) string {mustBeMember(mode,["log2lin","lin2log"])} = "log2lin"
             end
+            out = nan(size(in));
             switch mode
                 case "log2lin"
                     % Convert from internal representation to  preferred, preferred peak, anti-preferred
-                    % peak, offset, and kappa parameters.
-                    offset = exp(in(:,1));
-                    preferred = mod(in(:,2),360);
-                    kappa = exp(in(:,3));
-                    prefPeak = (offset + exp(in(:,4)).*exp(kappa))./binWidth;
-                    antiPeak = (offset + exp(in(:,5)).*exp(kappa))./binWidth;
-                    out = [preferred prefPeak antiPeak kappa offset];
+                    % peak, offset, and kappa parameters.                    
+                    out(:,[1 3 4 5]) = exp(in(:,[1 3 4 5]));
+                    out(:,2) = mod(in(:,2),360);                    
                 case "lin2log"
                     % The inverse transform; from linear to log
                     % parameters used in the object.
-                    out(:,1) = log(in(:,5));
-                    out(:,2) = in(:,1);
-                    out(:,3) = log(in(:,4));
-                    out(:,4) = log( (binWidth*in(:,2) - in(:,5))./exp(in(:,4)));
-                    out(:,5) = log( (binWidth*in(:,3) - in(:,5))./exp(in(:,4)));
+                    % In = [offset preferred kappa prefPeak antiPeak];                                       
+                    out(:,[1 3 4 5]) = log(in(:,[1 3 4 5]));
+                    out(:,2) = in(:,2);
             end
         end
 
